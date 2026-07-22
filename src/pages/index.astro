@@ -1,0 +1,383 @@
+---
+import "../styles/global.css";
+const title = "RUÍDO — seu barulho em cartaz";
+const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Status.";
+---
+
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={desc} />
+    <meta name="theme-color" content="#171418" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icone.svg" type="image/svg+xml" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={desc} />
+    <meta property="og:type" content="website" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;600;700&family=Courier+Prime:wght@400;700&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap"
+    />
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <div class="logo">RUÍDO<span>■</span></div>
+        <div class="tagline">semana · mês · ano · last.fm</div>
+      </header>
+      <div class="hazard" aria-hidden="true"></div>
+
+      <!-- ============ ENTRADA ============ -->
+      <section id="tela-entrada">
+        <div class="card pink">
+          <div class="eyebrow">protótipo · v0.6</div>
+          <div class="bignum">SEU BARULHO,<br />EM CARTAZ.</div>
+          <p class="lead">
+            Semana, mês ou o ano inteiro. Digita seu @ do Last.fm e pronto — sem senha, porque suas
+            estatísticas já são públicas e app que pede senha ensina hábito de phishing.
+          </p>
+          <button class="btn dark" id="btn-demo" style="margin-top:14px">VER DEMO →</button>
+        </div>
+
+        <div class="card" id="box-chave" style="margin-top:22px">
+          <div class="eyebrow">instalação · só uma vez</div>
+          <p style="font-size:13px;line-height:1.55;margin:0 0 10px">
+            Cola a chave da API do Last.fm uma única vez. Ela fica guardada nesse navegador e, daqui
+            pra frente, a entrada pede só o @. A chave sai na hora e de graça em
+            <b>last.fm/api/account/create</b> — só o nome do aplicativo é obrigatório.
+          </p>
+          <input id="inp-chave" placeholder="cole a API key" autocomplete="off" />
+          <button class="btn" id="btn-chave" style="margin-top:12px">GUARDAR E CONTINUAR</button>
+        </div>
+
+        <div class="card hidden" id="box-login" style="margin-top:22px">
+          <div class="eyebrow">entrar</div>
+          <div class="field">
+            <span class="at" aria-hidden="true">@</span>
+            <input id="inp-user" placeholder="seu usuário do last.fm" autocomplete="username" />
+          </div>
+          <p class="erro hidden" id="erro"></p>
+          <button class="btn block" id="btn-entrar" style="margin-top:12px">ENTRAR</button>
+          <button class="link" id="btn-trocar-chave" style="margin-top:10px">
+            trocar a chave da API
+          </button>
+        </div>
+      </section>
+
+      <!-- ============ PAINEL ============ -->
+      <section id="tela-painel" class="hidden" style="display:grid;gap:20px">
+        <div class="periodos" role="group" aria-label="Período"></div>
+        <p class="nota hidden" id="carregando">recalculando…</p>
+
+        <div class="agora hidden" id="agora">
+          <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span id="agora-txt"></span>
+        </div>
+
+        <div class="abas" role="tablist" aria-label="Seções">
+          <button role="tab" data-aba="cartaz" aria-selected="true">CARTAZ</button>
+          <button role="tab" data-aba="numeros" aria-selected="false">NÚMEROS</button>
+          <button role="tab" data-aba="tops" aria-selected="false">TOPS</button>
+        </div>
+
+        <!-- aba cartaz -->
+        <div id="aba-cartaz" style="display:grid;gap:16px">
+          <div class="card">
+            <div class="eyebrow">estilo</div>
+            <div class="chips grid2" id="chips-layout"></div>
+            <div style="height:14px"></div>
+            <div class="eyebrow">formato</div>
+            <div class="chips" id="chips-res"></div>
+          </div>
+          <div class="preview">
+            <canvas id="cartaz" role="img" aria-label="Prévia do cartaz"></canvas>
+            <button class="btn pink" id="btn-baixar">BAIXAR PNG</button>
+            <p class="nota" id="nota-res"></p>
+          </div>
+        </div>
+
+        <!-- aba números -->
+        <div id="aba-numeros" class="hidden" style="display:grid;gap:20px">
+          <div class="card">
+            <div class="eyebrow" id="num-periodo"></div>
+            <div class="bignum" id="num-total">0</div>
+            <div style="font-weight:700;font-size:13px;margin-top:4px">SCROBBLES</div>
+            <div id="num-delta"></div>
+            <div id="num-unicos" style="margin-top:14px;font-size:13px"></div>
+            <div id="num-tempo" style="margin-top:6px;font-size:13px"></div>
+          </div>
+          <div class="card cobalt">
+            <div class="eyebrow">relógio de escuta · últimos 200 scrobbles</div>
+            <div class="relogio" id="relogio"></div>
+            <p style="font-size:11px;opacity:.85;margin:8px 0 0">
+              Esse gráfico sempre olha os 200 scrobbles mais recentes, independente do período.
+            </p>
+          </div>
+        </div>
+
+        <!-- aba tops -->
+        <div id="aba-tops" class="hidden" style="display:grid;gap:20px">
+          <div class="card"><div class="eyebrow">top artistas</div><div id="lista-artistas"></div></div>
+          <div class="card"><div class="eyebrow">top músicas</div><div id="lista-musicas"></div></div>
+          <div class="card"><div class="eyebrow">top álbuns</div><div id="lista-albuns"></div></div>
+        </div>
+
+        <button class="link" id="btn-sair" style="color:var(--paper);justify-self:start">← sair</button>
+      </section>
+    </main>
+
+    <script>
+      import * as C from "../scripts/cartaz.js";
+      import * as LF from "../scripts/lastfm.js";
+
+      const $ = (s) => document.querySelector(s);
+      const el = {
+        entrada: $("#tela-entrada"),
+        painel: $("#tela-painel"),
+        boxChave: $("#box-chave"),
+        boxLogin: $("#box-login"),
+        inpChave: $("#inp-chave"),
+        inpUser: $("#inp-user"),
+        erro: $("#erro"),
+        carregando: $("#carregando"),
+        canvas: $("#cartaz"),
+        notaRes: $("#nota-res"),
+        agora: $("#agora"),
+        agoraTxt: $("#agora-txt"),
+      };
+
+      let estado = { dados: null, periodo: "7day", layout: "mixtape", res: "story", demo: false, user: "" };
+
+      /* ---------- montagem dos controles ---------- */
+      const barraPeriodos = document.querySelector(".periodos");
+      C.PERIODS.forEach((p) => {
+        const b = document.createElement("button");
+        b.textContent = p.label.toUpperCase();
+        b.dataset.id = p.id;
+        b.dataset.recap = p.recap ? "1" : "0";
+        b.setAttribute("aria-pressed", p.id === estado.periodo);
+        b.onclick = () => trocarPeriodo(p.id);
+        barraPeriodos.appendChild(b);
+      });
+
+      C.LAYOUTS.forEach((l) => {
+        const b = document.createElement("button");
+        b.className = "chip";
+        b.innerHTML = `${l.label.toUpperCase()}<small>${l.note}</small>`;
+        b.setAttribute("aria-pressed", l.id === estado.layout);
+        b.onclick = () => {
+          estado.layout = l.id;
+          $("#chips-layout").querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", "false"));
+          b.setAttribute("aria-pressed", "true");
+          desenhar();
+        };
+        $("#chips-layout").appendChild(b);
+      });
+
+      C.RESOLUTIONS.forEach((r) => {
+        const b = document.createElement("button");
+        b.className = "chip";
+        b.textContent = `${r.label.toUpperCase()} · ${r.w}×${r.h}`;
+        b.setAttribute("aria-pressed", r.id === estado.res);
+        b.onclick = () => {
+          estado.res = r.id;
+          $("#chips-res").querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", "false"));
+          b.setAttribute("aria-pressed", "true");
+          desenhar();
+        };
+        $("#chips-res").appendChild(b);
+      });
+
+      document.querySelectorAll('[role="tab"]').forEach((t) => {
+        t.onclick = () => {
+          document.querySelectorAll('[role="tab"]').forEach((x) => x.setAttribute("aria-selected", "false"));
+          t.setAttribute("aria-selected", "true");
+          ["cartaz", "numeros", "tops"].forEach((a) => {
+            $(`#aba-${a}`).classList.toggle("hidden", a !== t.dataset.aba);
+          });
+        };
+      });
+
+      /* ---------- entrada ---------- */
+      async function prepararEntrada() {
+        const precisaChave = await LF.needsBrowserKey();
+        el.boxChave.classList.toggle("hidden", !precisaChave);
+        el.boxLogin.classList.toggle("hidden", precisaChave);
+        el.inpUser.value = LF.storedUser();
+      }
+
+      $("#btn-chave").onclick = () => {
+        const k = el.inpChave.value.trim();
+        if (!k) return;
+        LF.saveKey(k);
+        el.inpChave.value = "";
+        prepararEntrada();
+      };
+      $("#btn-trocar-chave").onclick = () => {
+        el.boxChave.classList.remove("hidden");
+        el.boxLogin.classList.add("hidden");
+      };
+
+      $("#btn-demo").onclick = () => {
+        estado.demo = true;
+        estado.periodo = "7day";
+        estado.dados = LF.demo("7day");
+        mostrarPainel();
+      };
+
+      $("#btn-entrar").onclick = () => entrar();
+      el.inpUser.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") entrar();
+      });
+      el.inpChave.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("#btn-chave").click();
+      });
+
+      async function entrar() {
+        const u = el.inpUser.value.trim();
+        if (!u) return;
+        setBusy(true);
+        el.erro.classList.add("hidden");
+        try {
+          const d = await LF.load(u, estado.periodo);
+          LF.saveUser(u);
+          estado = { ...estado, dados: d, demo: false, user: u };
+          mostrarPainel();
+        } catch (e) {
+          el.erro.textContent = "⚠ " + (e.message || "Não achei esse @.");
+          el.erro.classList.remove("hidden");
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function trocarPeriodo(id) {
+        if (id === estado.periodo) return;
+        estado.periodo = id;
+        barraPeriodos.querySelectorAll("button").forEach((b) =>
+          b.setAttribute("aria-pressed", b.dataset.id === id)
+        );
+        if (estado.demo) {
+          estado.dados = LF.demo(id);
+          pintarPainel();
+          return;
+        }
+        setBusy(true);
+        try {
+          estado.dados = await LF.load(estado.user, id);
+          pintarPainel();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      $("#btn-sair").onclick = () => {
+        estado.dados = null;
+        el.painel.classList.add("hidden");
+        el.entrada.classList.remove("hidden");
+      };
+
+      $("#btn-baixar").onclick = () =>
+        C.download(el.canvas, estado.layout, estado.res, estado.periodo);
+
+      function setBusy(v) {
+        el.carregando.classList.toggle("hidden", !v);
+        $("#btn-entrar").disabled = v;
+        $("#btn-entrar").textContent = v ? "PUXANDO SCROBBLES…" : "ENTRAR";
+      }
+
+      /* ---------- painel ---------- */
+      async function mostrarPainel() {
+        el.entrada.classList.add("hidden");
+        el.painel.classList.remove("hidden");
+        await C.ensureFonts();
+        pintarPainel();
+      }
+
+      function pintarPainel() {
+        const d = estado.dados;
+        const p = C.PERIODS.find((x) => x.id === estado.periodo);
+
+        if (d.nowPlaying) {
+          el.agora.classList.remove("hidden");
+          el.agoraTxt.textContent = `TOCANDO AGORA: ${d.nowPlaying.name} — ${d.nowPlaying.artist}`;
+        } else el.agora.classList.add("hidden");
+
+        $("#num-periodo").textContent = p.label;
+        $("#num-total").textContent = (d.count || 0).toLocaleString("pt-BR");
+        const delta = d.prevCount > 0 ? Math.round(((d.count - d.prevCount) / d.prevCount) * 100) : null;
+        $("#num-delta").innerHTML =
+          delta === null
+            ? ""
+            : `<span style="display:inline-block;margin-top:10px;font-weight:700;font-size:13px;background:${
+                delta >= 0 ? "var(--cobalt)" : "var(--ink)"
+              };color:var(--paper);padding:4px 10px">${delta >= 0 ? "↑" : "↓"} ${Math.abs(delta)}% vs. ${p.prev}</span>`;
+        $("#num-unicos").innerHTML = d.uniqueArtists
+          ? `<b>${d.uniqueArtists.toLocaleString("pt-BR")}</b> artistas diferentes no período`
+          : "";
+        $("#num-tempo").innerHTML = d.segundos
+          ? `≈ <b>${C.formatTempo(d.segundos)}</b> de música ouvida${
+              d.duracaoEstimada ? " (estimativa grosseira: o Last.fm não informou a duração das suas faixas)" : ""
+            }`
+          : "";
+
+        const max = Math.max(1, ...d.clock);
+        $("#relogio").innerHTML = d.clock
+          .map(
+            (v, h) =>
+              `<div><i class="${v === max ? "pico" : ""}" style="height:${Math.max(4, (v / max) * 72)}px" title="${h}h — ${v}"></i>${
+                h % 6 === 0 ? `<span>${h}h</span>` : ""
+              }</div>`
+          )
+          .join("");
+
+        lista("#lista-artistas", d.topArtists, (a) => a.name, () => "");
+        lista("#lista-musicas", d.topTracks, (t) => t.name, (t) => t.artist);
+        lista("#lista-albuns", d.topAlbums, (a) => a.name, (a) => a.artist);
+
+        desenhar();
+      }
+
+      function lista(sel, items, nome, sub) {
+        const max = Math.max(1, ...items.map((i) => i.playcount));
+        $(sel).innerHTML = items
+          .map(
+            (it, i) => `<div class="linha">
+              <span class="tile">${nome(it).charAt(0).toUpperCase()}</span>
+              <span class="meio">
+                <span class="nome">${i + 1}. ${escapar(nome(it))}</span>
+                ${sub(it) ? `<span class="sub">${escapar(sub(it))}</span>` : ""}
+                <span class="barra"><i style="width:${Math.max(6, (it.playcount / max) * 100)}%"></i></span>
+              </span>
+              <span class="qtd">${it.playcount}</span>
+            </div>`
+          )
+          .join("");
+      }
+
+      const escapar = (s) =>
+        String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+      function desenhar() {
+        if (!estado.dados) return;
+        const res = C.render(el.canvas, estado.layout, estado.res, estado.dados);
+        el.canvas.dataset.res = estado.res;
+        $("#btn-baixar").textContent = `BAIXAR PNG (${res.w}×${res.h})`;
+        el.notaRes.textContent = "O arquivo sai na resolução cheia, não no tamanho da prévia.";
+      }
+
+      prepararEntrada();
+
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      }
+    </script>
+  </body>
+</html>
