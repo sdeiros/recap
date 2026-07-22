@@ -244,6 +244,50 @@ select {
   color: var(--bone-dim);
 }
 
+/* ---------- reforço visual (títulos, destaque) ---------- */
+.logo {
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 44px;
+  letter-spacing: -0.02em;
+  color: var(--bone);
+}
+.tagline {
+  font-size: 13px;
+  color: var(--bone-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.bignum {
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 88px;
+  line-height: 0.9;
+  color: var(--bone);
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+.eyebrow {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--bone-dim);
+}
+.lead {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--bone);
+  opacity: 0.95;
+}
+
+/* deixa o canvas com sombra e borda mais marcantes */
+canvas {
+  border-radius: 4px;
+  box-shadow: 0 36px 80px rgba(0,0,0,0.65), 0 0 0 2px rgba(255,74,28,0.03);
+}
+
 /* opções de estilo e formato */
 .opcoes {
   display: grid;
