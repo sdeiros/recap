@@ -1,6 +1,6 @@
 ---
 import "../styles/global.css";
-const title = "RUÍDO — seu barulho em cartaz";
+const title = "FAIXA — sua escuta em cartaz";
 const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Status.";
 ---
 
@@ -8,10 +8,10 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{title}</title>
     <meta name="description" content={desc} />
-    <meta name="theme-color" content="#171418" />
+    <meta name="theme-color" content="#0D0D0F" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icone.svg" type="image/svg+xml" />
     <meta property="og:title" content={title} />
@@ -21,124 +21,152 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;600;700&family=Courier+Prime:wght@400;700&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&family=Courier+Prime:wght@400;700&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&family=Syne:wght@600;700;800&display=swap"
     />
   </head>
   <body>
-    <main class="wrap">
-      <header>
-        <div class="logo">RUÍDO<span>■</span></div>
-        <div class="tagline">semana · mês · ano · last.fm</div>
+    <!-- ===================== ENTRADA ===================== -->
+    <section class="entrada" id="tela-entrada">
+      <div class="cartao-entrada">
+        <div class="marca">
+          <b>FAIXA</b>
+          <i></i>
+        </div>
+
+        <h1 class="titulo">Sua escuta<br /><em>em cartaz.</em></h1>
+        <p class="sub">
+          Semana, mês ou o ano inteiro do seu Last.fm, em imagem pronta pra Stories e Status.
+          Só o @ — sem senha.
+        </p>
+
+        <!-- instalação da chave (some no modo servidor) -->
+        <div class="bloco oculto" id="box-chave">
+          <span class="rotulo">configuração · uma vez</span>
+          <input type="text" id="inp-chave" placeholder="cole sua API key do Last.fm" autocomplete="off" />
+          <p class="dica">
+            Gratuita e instantânea em <b>last.fm/api/account/create</b>. Fica guardada só neste
+            navegador.
+          </p>
+          <button class="btn" id="btn-chave">Guardar</button>
+        </div>
+
+        <!-- login -->
+        <div class="bloco oculto" id="box-login">
+          <div class="campo-at">
+            <span>@</span>
+            <input type="text" id="inp-user" placeholder="seu usuário do last.fm" autocomplete="username" />
+          </div>
+          <p class="erro oculto" id="erro"></p>
+          <button class="btn" id="btn-entrar">Entrar</button>
+          <div style="display:flex;gap:14px;align-items:center">
+            <button class="link" id="btn-demo">ver demonstração</button>
+            <button class="link" id="btn-trocar-chave">trocar chave</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== APLICAÇÃO ===================== -->
+    <div class="app oculto" id="tela-app">
+      <header class="topbar">
+        <div class="marca">
+          <b>FAIXA</b>
+          <i></i>
+        </div>
+        <div class="segmento" id="periodos" role="group" aria-label="Período"></div>
+        <div class="passo oculto" id="passo">
+          <button id="passo-ant" aria-label="Período anterior">‹</button>
+          <b id="passo-rotulo"></b>
+          <button id="passo-prox" aria-label="Período seguinte">›</button>
+        </div>
+        <span class="carregando oculto" id="carregando">atualizando…</span>
+        <div class="espaco"></div>
+        <div class="usuario">
+          <span id="quem"></span>
+          <button class="link" id="btn-sair">sair</button>
+        </div>
       </header>
-      <div class="hazard" aria-hidden="true"></div>
 
-      <!-- ============ ENTRADA ============ -->
-      <section id="tela-entrada">
-        <div class="card pink">
-          <div class="eyebrow">protótipo · v0.6</div>
-          <div class="bignum">SEU BARULHO,<br />EM CARTAZ.</div>
-          <p class="lead">
-            Semana, mês ou o ano inteiro. Digita seu @ do Last.fm e pronto — sem senha, porque suas
-            estatísticas já são públicas e app que pede senha ensina hábito de phishing.
-          </p>
-          <button class="btn dark" id="btn-demo" style="margin-top:14px">VER DEMO →</button>
-        </div>
+      <div class="corpo">
+        <!-- ---------- painel de controles ---------- -->
+        <aside class="painel">
+          <nav class="abas" role="tablist" aria-label="Seções">
+            <button role="tab" data-aba="cartaz" aria-selected="true">Cartaz</button>
+            <button role="tab" data-aba="numeros" aria-selected="false">Números</button>
+            <button role="tab" data-aba="tops" aria-selected="false">Tops</button>
+          </nav>
 
-        <div class="card" id="box-chave" style="margin-top:22px">
-          <div class="eyebrow">instalação · só uma vez</div>
-          <p style="font-size:13px;line-height:1.55;margin:0 0 10px">
-            Cola a chave da API do Last.fm uma única vez. Ela fica guardada nesse navegador e, daqui
-            pra frente, a entrada pede só o @. A chave sai na hora e de graça em
-            <b>last.fm/api/account/create</b> — só o nome do aplicativo é obrigatório.
-          </p>
-          <input id="inp-chave" placeholder="cole a API key" autocomplete="off" />
-          <button class="btn" id="btn-chave" style="margin-top:12px">GUARDAR E CONTINUAR</button>
-        </div>
-
-        <div class="card hidden" id="box-login" style="margin-top:22px">
-          <div class="eyebrow">entrar</div>
-          <div class="field">
-            <span class="at" aria-hidden="true">@</span>
-            <input id="inp-user" placeholder="seu usuário do last.fm" autocomplete="username" />
+          <!-- aba cartaz -->
+          <div id="aba-cartaz" style="display:grid;gap:20px">
+            <div class="bloco">
+              <span class="rotulo">estilo</span>
+              <div class="opcoes" id="op-layout"></div>
+            </div>
+            <div class="bloco">
+              <span class="rotulo">formato</span>
+              <div class="opcoes" id="op-res"></div>
+            </div>
+            <div class="bloco">
+              <span class="rotulo">assinatura</span>
+              <input type="text" id="inp-assinatura" maxlength="42" placeholder="ex: ouvindo no YouTube Music" />
+              <label class="caixa">
+                <input type="checkbox" id="chk-handle" />
+                usar meu @ quando vazio
+              </label>
+              <p class="dica">Deixe vazio e o cartaz sai sem identificação.</p>
+            </div>
           </div>
-          <p class="erro hidden" id="erro"></p>
-          <button class="btn block" id="btn-entrar" style="margin-top:12px">ENTRAR</button>
-          <button class="link" id="btn-trocar-chave" style="margin-top:10px">
-            trocar a chave da API
-          </button>
-        </div>
-      </section>
 
-      <!-- ============ PAINEL ============ -->
-      <section id="tela-painel" class="hidden" style="display:grid;gap:20px">
-        <div class="periodos" role="group" aria-label="Período"></div>
-        <p class="nota hidden" id="carregando">recalculando…</p>
-
-        <div class="agora hidden" id="agora">
-          <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span id="agora-txt"></span>
-        </div>
-
-        <div class="abas" role="tablist" aria-label="Seções">
-          <button role="tab" data-aba="cartaz" aria-selected="true">CARTAZ</button>
-          <button role="tab" data-aba="numeros" aria-selected="false">NÚMEROS</button>
-          <button role="tab" data-aba="tops" aria-selected="false">TOPS</button>
-        </div>
-
-        <!-- aba cartaz -->
-        <div id="aba-cartaz" style="display:grid;gap:16px">
-          <div class="card">
-            <div class="eyebrow">estilo</div>
-            <div class="chips grid2" id="chips-layout"></div>
-            <div style="height:14px"></div>
-            <div class="eyebrow">formato</div>
-            <div class="chips" id="chips-res"></div>
+          <!-- aba números -->
+          <div id="aba-numeros" class="oculto" style="display:grid;gap:20px">
+            <div class="metricas" id="metricas"></div>
+            <div class="bloco">
+              <span class="rotulo">relógio · últimos 200 scrobbles</span>
+              <div class="relogio" id="relogio"></div>
+              <p class="dica">Sempre os 200 mais recentes, independente do período.</p>
+            </div>
+            <div class="bloco" id="bloco-estimativa"></div>
           </div>
-          <div class="preview">
-            <canvas id="cartaz" role="img" aria-label="Prévia do cartaz"></canvas>
-            <button class="btn pink" id="btn-baixar">BAIXAR PNG</button>
-            <p class="nota" id="nota-res"></p>
-          </div>
-        </div>
 
-        <!-- aba números -->
-        <div id="aba-numeros" class="hidden" style="display:grid;gap:20px">
-          <div class="card">
-            <div class="eyebrow" id="num-periodo"></div>
-            <div class="bignum" id="num-total">0</div>
-            <div style="font-weight:700;font-size:13px;margin-top:4px">SCROBBLES</div>
-            <div id="num-delta"></div>
-            <div id="num-unicos" style="margin-top:14px;font-size:13px"></div>
-            <div id="num-tempo" style="margin-top:6px;font-size:13px"></div>
+          <!-- aba tops -->
+          <div id="aba-tops" class="oculto" style="display:grid;gap:20px">
+            <div class="bloco">
+              <span class="rotulo">artistas</span>
+              <div class="lista" id="lista-artistas"></div>
+            </div>
+            <div class="bloco">
+              <span class="rotulo">músicas</span>
+              <div class="lista" id="lista-musicas"></div>
+            </div>
+            <div class="bloco">
+              <span class="rotulo">álbuns</span>
+              <div class="lista" id="lista-albuns"></div>
+            </div>
           </div>
-          <div class="card cobalt">
-            <div class="eyebrow">relógio de escuta · últimos 200 scrobbles</div>
-            <div class="relogio" id="relogio"></div>
-            <p style="font-size:11px;opacity:.85;margin:8px 0 0">
-              Esse gráfico sempre olha os 200 scrobbles mais recentes, independente do período.
-            </p>
+        </aside>
+
+        <!-- ---------- palco ---------- -->
+        <main class="palco">
+          <div class="moldura"><canvas id="cartaz" role="img" aria-label="Prévia do cartaz"></canvas></div>
+          <div class="acoes">
+            <button class="btn" id="btn-baixar">Baixar PNG</button>
+            <span class="nota" id="nota-res"></span>
           </div>
-        </div>
-
-        <!-- aba tops -->
-        <div id="aba-tops" class="hidden" style="display:grid;gap:20px">
-          <div class="card"><div class="eyebrow">top artistas</div><div id="lista-artistas"></div></div>
-          <div class="card"><div class="eyebrow">top músicas</div><div id="lista-musicas"></div></div>
-          <div class="card"><div class="eyebrow">top álbuns</div><div id="lista-albuns"></div></div>
-        </div>
-
-        <button class="link" id="btn-sair" style="color:var(--paper);justify-self:start">← sair</button>
-      </section>
-    </main>
+        </main>
+      </div>
+    </div>
 
     <script>
       import * as C from "../scripts/cartaz.js";
       import * as LF from "../scripts/lastfm.js";
 
       const $ = (s) => document.querySelector(s);
+      const esc = (v) =>
+        String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
       const el = {
         entrada: $("#tela-entrada"),
-        painel: $("#tela-painel"),
+        app: $("#tela-app"),
         boxChave: $("#box-chave"),
         boxLogin: $("#box-login"),
         inpChave: $("#inp-chave"),
@@ -146,68 +174,91 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
         erro: $("#erro"),
         carregando: $("#carregando"),
         canvas: $("#cartaz"),
-        notaRes: $("#nota-res"),
-        agora: $("#agora"),
-        agoraTxt: $("#agora-txt"),
+        quem: $("#quem"),
       };
 
-      let estado = { dados: null, periodo: "7day", layout: "mixtape", res: "story", demo: false, user: "" };
+      let estado = {
+        dados: null,
+        periodo: "semana",
+        offset: 0,
+        layout: "mixtape",
+        res: "story",
+        demo: false,
+        user: "",
+        assinatura: "",
+        mostrarHandle: false,
+      };
 
-      /* ---------- montagem dos controles ---------- */
-      const barraPeriodos = document.querySelector(".periodos");
+      /* ---------------- controles ---------------- */
+      const barra = $("#periodos");
       C.PERIODS.forEach((p) => {
         const b = document.createElement("button");
-        b.textContent = p.label.toUpperCase();
+        b.textContent = p.label;
         b.dataset.id = p.id;
         b.dataset.recap = p.recap ? "1" : "0";
-        b.setAttribute("aria-pressed", p.id === estado.periodo);
-        b.onclick = () => trocarPeriodo(p.id);
-        barraPeriodos.appendChild(b);
+        b.setAttribute("aria-pressed", String(p.id === estado.periodo));
+        b.onclick = () => trocarPeriodo(p.id, 0);
+        barra.appendChild(b);
       });
 
-      C.LAYOUTS.forEach((l) => {
-        const b = document.createElement("button");
-        b.className = "chip";
-        b.innerHTML = `${l.label.toUpperCase()}<small>${l.note}</small>`;
-        b.setAttribute("aria-pressed", l.id === estado.layout);
-        b.onclick = () => {
-          estado.layout = l.id;
-          $("#chips-layout").querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", "false"));
-          b.setAttribute("aria-pressed", "true");
-          desenhar();
-        };
-        $("#chips-layout").appendChild(b);
-      });
+      function opcoes(alvo, itens, atual, aoEscolher) {
+        const cont = $(alvo);
+        cont.innerHTML = "";
+        itens.forEach((it) => {
+          const b = document.createElement("button");
+          b.className = "opcao";
+          b.setAttribute("aria-pressed", String(it.id === atual()));
+          b.innerHTML =
+            `<span class="marcador"></span><span class="txt"><b>${esc(it.titulo)}</b>` +
+            (it.nota ? `<span>${esc(it.nota)}</span>` : "") +
+            `</span>`;
+          b.onclick = () => {
+            aoEscolher(it.id);
+            cont.querySelectorAll(".opcao").forEach((x) => x.setAttribute("aria-pressed", "false"));
+            b.setAttribute("aria-pressed", "true");
+            desenhar();
+          };
+          cont.appendChild(b);
+        });
+      }
 
-      C.RESOLUTIONS.forEach((r) => {
-        const b = document.createElement("button");
-        b.className = "chip";
-        b.textContent = `${r.label.toUpperCase()} · ${r.w}×${r.h}`;
-        b.setAttribute("aria-pressed", r.id === estado.res);
-        b.onclick = () => {
-          estado.res = r.id;
-          $("#chips-res").querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", "false"));
-          b.setAttribute("aria-pressed", "true");
-          desenhar();
-        };
-        $("#chips-res").appendChild(b);
-      });
+      opcoes(
+        "#op-layout",
+        C.LAYOUTS.map((l) => ({ id: l.id, titulo: l.label, nota: l.note })),
+        () => estado.layout,
+        (id) => (estado.layout = id)
+      );
+      opcoes(
+        "#op-res",
+        C.RESOLUTIONS.map((r) => ({ id: r.id, titulo: r.label, nota: `${r.w} × ${r.h}` })),
+        () => estado.res,
+        (id) => (estado.res = id)
+      );
 
       document.querySelectorAll('[role="tab"]').forEach((t) => {
         t.onclick = () => {
           document.querySelectorAll('[role="tab"]').forEach((x) => x.setAttribute("aria-selected", "false"));
           t.setAttribute("aria-selected", "true");
-          ["cartaz", "numeros", "tops"].forEach((a) => {
-            $(`#aba-${a}`).classList.toggle("hidden", a !== t.dataset.aba);
-          });
+          ["cartaz", "numeros", "tops"].forEach((a) =>
+            $(`#aba-${a}`).classList.toggle("oculto", a !== t.dataset.aba)
+          );
         };
       });
 
-      /* ---------- entrada ---------- */
+      $("#inp-assinatura").addEventListener("input", (e) => {
+        estado.assinatura = e.target.value;
+        desenhar();
+      });
+      $("#chk-handle").addEventListener("change", (e) => {
+        estado.mostrarHandle = e.target.checked;
+        desenhar();
+      });
+
+      /* ---------------- entrada ---------------- */
       async function prepararEntrada() {
-        const precisaChave = await LF.needsBrowserKey();
-        el.boxChave.classList.toggle("hidden", !precisaChave);
-        el.boxLogin.classList.toggle("hidden", precisaChave);
+        const precisa = await LF.needsBrowserKey();
+        el.boxChave.classList.toggle("oculto", !precisa);
+        el.boxLogin.classList.toggle("oculto", precisa);
         el.inpUser.value = LF.storedUser();
       }
 
@@ -219,18 +270,17 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
         prepararEntrada();
       };
       $("#btn-trocar-chave").onclick = () => {
-        el.boxChave.classList.remove("hidden");
-        el.boxLogin.classList.add("hidden");
+        el.boxChave.classList.remove("oculto");
+        el.boxLogin.classList.add("oculto");
       };
-
       $("#btn-demo").onclick = () => {
         estado.demo = true;
-        estado.periodo = "7day";
-        estado.dados = LF.demo("7day");
-        mostrarPainel();
+        estado.periodo = "semana";
+        estado.offset = 0;
+        estado.dados = LF.demo("semana", 0);
+        abrirApp();
       };
-
-      $("#btn-entrar").onclick = () => entrar();
+      $("#btn-entrar").onclick = entrar;
       el.inpUser.addEventListener("keydown", (e) => {
         if (e.key === "Enter") entrar();
       });
@@ -241,120 +291,140 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
       async function entrar() {
         const u = el.inpUser.value.trim();
         if (!u) return;
-        setBusy(true);
-        el.erro.classList.add("hidden");
+        ocupado(true);
+        el.erro.classList.add("oculto");
         try {
-          const d = await LF.load(u, estado.periodo);
+          const d = await LF.load(u, estado.periodo, estado.offset);
           LF.saveUser(u);
           estado = { ...estado, dados: d, demo: false, user: u };
-          mostrarPainel();
+          abrirApp();
         } catch (e) {
-          el.erro.textContent = "⚠ " + (e.message || "Não achei esse @.");
-          el.erro.classList.remove("hidden");
+          el.erro.textContent = e.message || "Não achei esse @.";
+          el.erro.classList.remove("oculto");
         } finally {
-          setBusy(false);
+          ocupado(false);
         }
       }
 
-      async function trocarPeriodo(id) {
-        if (id === estado.periodo) return;
-        estado.periodo = id;
-        barraPeriodos.querySelectorAll("button").forEach((b) =>
-          b.setAttribute("aria-pressed", b.dataset.id === id)
-        );
-        if (estado.demo) {
-          estado.dados = LF.demo(id);
-          pintarPainel();
-          return;
-        }
-        setBusy(true);
-        try {
-          estado.dados = await LF.load(estado.user, id);
-          pintarPainel();
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setBusy(false);
-        }
+      function ocupado(v) {
+        el.carregando.classList.toggle("oculto", !v);
+        const b = $("#btn-entrar");
+        b.disabled = v;
+        b.textContent = v ? "Carregando…" : "Entrar";
       }
 
       $("#btn-sair").onclick = () => {
         estado.dados = null;
-        el.painel.classList.add("hidden");
-        el.entrada.classList.remove("hidden");
+        el.app.classList.add("oculto");
+        el.entrada.classList.remove("oculto");
       };
 
-      $("#btn-baixar").onclick = () =>
-        C.download(el.canvas, estado.layout, estado.res, estado.periodo);
+      $("#btn-baixar").onclick = () => C.download(el.canvas, estado.layout, estado.res, estado.periodo);
 
-      function setBusy(v) {
-        el.carregando.classList.toggle("hidden", !v);
-        $("#btn-entrar").disabled = v;
-        $("#btn-entrar").textContent = v ? "PUXANDO SCROBBLES…" : "ENTRAR";
+      async function trocarPeriodo(id, offset) {
+        if (id === estado.periodo && offset === estado.offset) return;
+        estado.periodo = id;
+        estado.offset = offset;
+        barra.querySelectorAll("button").forEach((b) =>
+          b.setAttribute("aria-pressed", String(b.dataset.id === id))
+        );
+        if (estado.demo) {
+          estado.dados = LF.demo(id, offset);
+          pintar();
+          return;
+        }
+        ocupado(true);
+        try {
+          estado.dados = await LF.load(estado.user, id, offset);
+          await C.precarregarCapas(estado.dados);
+          pintar();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          ocupado(false);
+        }
       }
 
-      /* ---------- painel ---------- */
-      async function mostrarPainel() {
-        el.entrada.classList.add("hidden");
-        el.painel.classList.remove("hidden");
-        await C.ensureFonts();
-        pintarPainel();
+      /* navegação entre meses e anos */
+      $("#passo-ant").onclick = () => {
+        const p = C.PERIODS.find((x) => x.id === estado.periodo);
+        if (estado.offset < p.maxOffset) trocarPeriodo(estado.periodo, estado.offset + 1);
+      };
+      $("#passo-prox").onclick = () => {
+        if (estado.offset > 0) trocarPeriodo(estado.periodo, estado.offset - 1);
+      };
+
+      function atualizarPasso() {
+        const p = C.PERIODS.find((x) => x.id === estado.periodo);
+        const caixa = $("#passo");
+        caixa.classList.toggle("oculto", p.maxOffset === 0);
+        if (p.maxOffset === 0) return;
+        const j = C.janela(estado.periodo, estado.offset);
+        $("#passo-rotulo").textContent = j.rotulo;
+        $("#passo-ant").disabled = estado.offset >= p.maxOffset;
+        $("#passo-prox").disabled = estado.offset <= 0;
       }
 
-      function pintarPainel() {
+      /* ---------------- aplicação ---------------- */
+      async function abrirApp() {
+        el.entrada.classList.add("oculto");
+        el.app.classList.remove("oculto");
+        await C.ensureAssets();
+        await C.precarregarCapas(estado.dados);
+        pintar();
+      }
+
+      function pintar() {
         const d = estado.dados;
         const p = C.PERIODS.find((x) => x.id === estado.periodo);
+        atualizarPasso();
+        el.quem.innerHTML = `<b>@${esc(d.user.name)}</b>${estado.demo ? " · demo" : ""}`;
 
-        if (d.nowPlaying) {
-          el.agora.classList.remove("hidden");
-          el.agoraTxt.textContent = `TOCANDO AGORA: ${d.nowPlaying.name} — ${d.nowPlaying.artist}`;
-        } else el.agora.classList.add("hidden");
-
-        $("#num-periodo").textContent = p.label;
-        $("#num-total").textContent = (d.count || 0).toLocaleString("pt-BR");
         const delta = d.prevCount > 0 ? Math.round(((d.count - d.prevCount) / d.prevCount) * 100) : null;
-        $("#num-delta").innerHTML =
-          delta === null
-            ? ""
-            : `<span style="display:inline-block;margin-top:10px;font-weight:700;font-size:13px;background:${
-                delta >= 0 ? "var(--cobalt)" : "var(--ink)"
-              };color:var(--paper);padding:4px 10px">${delta >= 0 ? "↑" : "↓"} ${Math.abs(delta)}% vs. ${p.prev}</span>`;
-        $("#num-unicos").innerHTML = d.uniqueArtists
-          ? `<b>${d.uniqueArtists.toLocaleString("pt-BR")}</b> artistas diferentes no período`
-          : "";
-        $("#num-tempo").innerHTML = d.segundos
-          ? `≈ <b>${C.formatTempo(d.segundos)}</b> de música ouvida${
-              d.duracaoEstimada ? " (estimativa grosseira: o Last.fm não informou a duração das suas faixas)" : ""
-            }`
-          : "";
+        const metricasEl = $("#metricas");
+        metricasEl.classList.add("anima");
+        metricasEl.innerHTML = [
+          [d.count.toLocaleString("pt-BR"), "scrobbles"],
+          [d.segundos ? C.formatTempo(d.segundos, true) : "—", "tempo"],
+          [(d.uniqueArtists || 0).toLocaleString("pt-BR"), "artistas"],
+        ]
+          .map(([v, r]) => `<div class="metrica"><b data-valor="${esc(v)}">${esc(v)}</b><span>${r}</span></div>`)
+          .join("");
+        contar(metricasEl.querySelectorAll("b"));
+
+        $("#bloco-estimativa").innerHTML =
+          `<p class="dica">${
+            delta === null ? "" : `${delta >= 0 ? "↑" : "↓"} ${Math.abs(delta)}% em relação ${p.prev === "semana passada" ? "à" : "ao"} ${p.prev}.<br />`
+          }${d.duracaoEstimada ? "O tempo é estimativa: o Last.fm não informou a duração das suas faixas." : "Tempo estimado pela duração média das suas faixas."}</p>`;
 
         const max = Math.max(1, ...d.clock);
         $("#relogio").innerHTML = d.clock
           .map(
             (v, h) =>
-              `<div><i class="${v === max ? "pico" : ""}" style="height:${Math.max(4, (v / max) * 72)}px" title="${h}h — ${v}"></i>${
-                h % 6 === 0 ? `<span>${h}h</span>` : ""
+              `<div><i class="${v === max ? "pico" : ""}" style="height:${Math.max(3, (v / max) * 56)}px" title="${h}h · ${v}"></i>${
+                h % 6 === 0 ? `<span>${h}</span>` : ""
               }</div>`
           )
           .join("");
 
         lista("#lista-artistas", d.topArtists, (a) => a.name, () => "");
         lista("#lista-musicas", d.topTracks, (t) => t.name, (t) => t.artist);
-        lista("#lista-albuns", d.topAlbums, (a) => a.name, (a) => a.artist);
+        lista("#lista-albuns", d.topAlbums || [], (a) => a.name, (a) => a.artist);
 
         desenhar();
       }
 
-      function lista(sel, items, nome, sub) {
-        const max = Math.max(1, ...items.map((i) => i.playcount));
-        $(sel).innerHTML = items
+      function lista(sel, itens, nome, sub) {
+        const alvo = $(sel);
+        alvo.classList.add("anima");
+        alvo.innerHTML = itens
+          .slice(0, 8)
           .map(
-            (it, i) => `<div class="linha">
-              <span class="tile">${nome(it).charAt(0).toUpperCase()}</span>
-              <span class="meio">
-                <span class="nome">${i + 1}. ${escapar(nome(it))}</span>
-                ${sub(it) ? `<span class="sub">${escapar(sub(it))}</span>` : ""}
-                <span class="barra"><i style="width:${Math.max(6, (it.playcount / max) * 100)}%"></i></span>
+            (it, i) => `<div class="item">
+              <span class="pos">${i + 1}</span>
+              <span style="min-width:0">
+                <span class="nome">${esc(nome(it))}</span>
+                ${sub(it) ? `<span class="sub" style="display:block">${esc(sub(it))}</span>` : ""}
               </span>
               <span class="qtd">${it.playcount}</span>
             </div>`
@@ -362,15 +432,35 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
           .join("");
       }
 
-      const escapar = (s) =>
-        String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+      /* números sobem até o valor, se forem números */
+      function contar(nos) {
+        const reduzido = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        nos.forEach((no) => {
+          const bruto = no.dataset.valor || "";
+          const alvo = Number(bruto.replace(/\./g, "").replace(/[^0-9]/g, ""));
+          if (reduzido || !alvo || alvo > 1e7 || /[a-z]/i.test(bruto)) return;
+          const dur = 620;
+          const t0 = performance.now();
+          const passo = (t) => {
+            const k = Math.min(1, (t - t0) / dur);
+            const suave = 1 - Math.pow(1 - k, 3);
+            no.textContent = Math.round(alvo * suave).toLocaleString("pt-BR");
+            if (k < 1) requestAnimationFrame(passo);
+            else no.textContent = bruto;
+          };
+          requestAnimationFrame(passo);
+        });
+      }
 
       function desenhar() {
         if (!estado.dados) return;
-        const res = C.render(el.canvas, estado.layout, estado.res, estado.dados);
-        el.canvas.dataset.res = estado.res;
-        $("#btn-baixar").textContent = `BAIXAR PNG (${res.w}×${res.h})`;
-        el.notaRes.textContent = "O arquivo sai na resolução cheia, não no tamanho da prévia.";
+        const dados = { ...estado.dados, assinatura: estado.assinatura, mostrarHandle: estado.mostrarHandle };
+        const res = C.render(el.canvas, estado.layout, estado.res, dados);
+        $("#nota-res").textContent = `${res.w} × ${res.h}`;
+        /* reinicia a transição de entrada a cada novo desenho */
+        el.canvas.classList.remove("trocando");
+        void el.canvas.offsetWidth;
+        el.canvas.classList.add("trocando");
       }
 
       prepararEntrada();

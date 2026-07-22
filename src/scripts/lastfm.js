@@ -5,11 +5,11 @@
    usando uma chave guardada no navegador.
    ============================================================ */
 
-import { PERIODS } from "./cartaz.js";
+import * as C from "./cartaz.js";
 
 const DIRECT = "https://ws.audioscrobbler.com/2.0/";
-const KEY_SLOT = "ruido:apikey";
-const USER_SLOT = "ruido:lastuser";
+const KEY_SLOT = "faixa:apikey";
+const USER_SLOT = "faixa:lastuser";
 
 let serverMode = null; // null = ainda não sabemos
 
@@ -59,29 +59,50 @@ async function call(params) {
   return json;
 }
 
-function bounds(days, back = 0) {
-  const now = Math.floor(Date.now() / 1000);
-  const span = days * 24 * 3600;
-  return { from: now - span * (back + 1), to: now - span * back };
+/* o Last.fm devolve uma estrela cinza quando não tem imagem; esse é o hash dela */
+const SEM_IMAGEM = "2a96cbd8b46e442fc41c2b86b821562f";
+
+function capaDe(img) {
+  if (!Array.isArray(img)) return "";
+  const ordem = ["extralarge", "large", "medium"];
+  for (const tam of ordem) {
+    const achou = img.find((i) => i.size === tam && i["#text"]);
+    if (achou && !achou["#text"].includes(SEM_IMAGEM)) return achou["#text"];
+  }
+  return "";
 }
 
-export async function load(user, periodId) {
-  const p = PERIODS.find((x) => x.id === periodId) || PERIODS[0];
+/* ============================================================
+   CARREGAMENTO
+   Períodos de calendário não existem na API (ela só tem janelas
+   deslizantes: 7day, 1month...). Para mês e ano usamos os charts
+   por intervalo, que aceitam from/to arbitrários.
+   ============================================================ */
+
+const num = (v) => Number(v || 0);
+
+async function contar(user, from, to) {
+  const r = await call({ method: "user.getrecenttracks", user, limit: 1, from, to });
+  return num(r?.recenttracks?.["@attr"]?.total);
+}
+
+/* capa do álbum: o chart por intervalo não traz imagem, então buscamos */
+async function buscarCapa(artista, album) {
+  try {
+    const r = await call({ method: "album.getinfo", artist: artista, album });
+    return capaDe(r?.album?.image);
+  } catch (_) {
+    return "";
+  }
+}
+
+export async function load(user, periodId, offset = 0) {
+  const j = C.janela(periodId, offset);
 
   const info = await call({ method: "user.getinfo", user });
   const recent = await call({ method: "user.getrecenttracks", user, limit: 200 });
   const tracks = [].concat(recent?.recenttracks?.track || []);
   const nowRaw = tracks.find((t) => t["@attr"]?.nowplaying === "true");
-
-  const cur = bounds(p.days, 0);
-  const prv = bounds(p.days, 1);
-  const [cCur, cPrev, ta, tt, alb] = await Promise.all([
-    call({ method: "user.getrecenttracks", user, limit: 1, from: cur.from, to: cur.to }),
-    call({ method: "user.getrecenttracks", user, limit: 1, from: prv.from, to: prv.to }),
-    call({ method: "user.gettopartists", user, period: p.id, limit: 50 }),
-    call({ method: "user.gettoptracks", user, period: p.id, limit: 50 }),
-    call({ method: "user.gettopalbums", user, period: p.id, limit: 5 }),
-  ]);
 
   const clock = new Array(24).fill(0);
   tracks.forEach((t) => {
@@ -89,44 +110,65 @@ export async function load(user, periodId) {
     if (uts) clock[new Date(uts * 1000).getHours()]++;
   });
 
-  const artistsAll = ta?.topartists?.artist || [];
-  const faixas = tt?.toptracks?.track || [];
+  const [count, prevCount, artChart, trkChart, albChart, topGeral] = await Promise.all([
+    contar(user, j.from, j.to),
+    contar(user, j.antFrom, j.antTo),
+    call({ method: "user.getweeklyartistchart", user, from: j.from, to: j.to }),
+    call({ method: "user.getweeklytrackchart", user, from: j.from, to: j.to }),
+    call({ method: "user.getweeklyalbumchart", user, from: j.from, to: j.to }),
+    /* uma chamada só para estimar a duração média das faixas */
+    call({ method: "user.gettoptracks", user, period: "1month", limit: 50 }),
+  ]);
 
-  /* Tempo de escuta.
-     O Receiptify soma playcount x duracao só das faixas exibidas, o que
-     mede aquelas faixas e não o período. Aqui a gente tira a duração média
-     das faixas que têm esse dado e multiplica pelo total de scrobbles —
-     é uma estimativa, mas do período inteiro. */
-  const duracoes = faixas.map((t) => Number(t.duration || 0)).filter((d) => d > 0);
+  const ordenar = (arr) =>
+    [].concat(arr || []).sort((a, b) => num(b.playcount) - num(a.playcount));
+
+  const artistas = ordenar(artChart?.weeklyartistchart?.artist);
+  const faixas = ordenar(trkChart?.weeklytrackchart?.track);
+  const albuns = ordenar(albChart?.weeklyalbumchart?.album);
+
+  /* duração média: base para estimar tempo de escuta */
+  const duracoes = (topGeral?.toptracks?.track || [])
+    .map((t) => num(t.duration))
+    .filter((d) => d > 0);
   const temDuracao = duracoes.length > 0;
   const mediaDur = temDuracao ? duracoes.reduce((a, b) => a + b, 0) / duracoes.length : 210;
-  const totalScrobbles = Number(cCur?.recenttracks?.["@attr"]?.total || 0);
-  const segundos = Math.round(totalScrobbles * mediaDur);
+
+  /* capas dos álbuns que os layouts realmente usam */
+  const topAlbuns = albuns.slice(0, 6).map((a) => ({
+    name: a.name,
+    artist: a.artist?.["#text"] || a.artist?.name || "",
+    playcount: num(a.playcount),
+    capa: "",
+  }));
+  await Promise.all(
+    topAlbuns.map(async (a, i) => {
+      if (!a.artist || !a.name) return;
+      topAlbuns[i].capa = await buscarCapa(a.artist, a.name);
+    })
+  );
 
   return {
-    period: p.id,
-    user: {
-      name: info?.user?.name || user,
-      playcount: Number(info?.user?.playcount || 0),
-    },
+    period: periodId,
+    offset,
+    janela: j,
+    user: { name: info?.user?.name || user, playcount: num(info?.user?.playcount) },
     nowPlaying: nowRaw ? { name: nowRaw.name, artist: nowRaw.artist?.["#text"] || "" } : null,
-    count: Number(cCur?.recenttracks?.["@attr"]?.total || 0),
-    prevCount: Number(cPrev?.recenttracks?.["@attr"]?.total || 0),
-    uniqueArtists: Number(ta?.topartists?.["@attr"]?.total || artistsAll.length),
-    segundos,
-    duracaoEstimada: !temDuracao,
+    count,
+    prevCount,
+    uniqueArtists: artistas.length,
     clock,
-    topArtists: artistsAll.slice(0, 8).map((a) => ({ name: a.name, playcount: Number(a.playcount) })),
+    segundos: Math.round(count * mediaDur),
+    mediaDur,
+    duracaoEstimada: !temDuracao,
+    topArtists: artistas.slice(0, 8).map((a) => ({ name: a.name, playcount: num(a.playcount) })),
     topTracks: faixas.slice(0, 8).map((t) => ({
       name: t.name,
-      artist: t.artist?.name || "",
-      playcount: Number(t.playcount),
+      artist: t.artist?.["#text"] || t.artist?.name || "",
+      playcount: num(t.playcount),
+      duration: 0,
     })),
-    topAlbums: (alb?.topalbums?.album || []).map((a) => ({
-      name: a.name,
-      artist: a.artist?.name || "",
-      playcount: Number(a.playcount),
-    })),
+    topAlbums: topAlbuns,
   };
 }
 
@@ -146,17 +188,17 @@ const BASE = {
     { name: "Turnstile", playcount: 24 },
   ],
   topTracks: [
-    { name: "Negro Drama", artist: "Racionais MC's", playcount: 21 },
-    { name: "Gorgeous", artist: "Little Simz", playcount: 18 },
-    { name: "Julieta", artist: "BK'", playcount: 17 },
-    { name: "Hat-trick", artist: "Djonga", playcount: 14 },
-    { name: "Starburster", artist: "Fontaines D.C.", playcount: 12 },
-    { name: "A Carne", artist: "Elza Soares", playcount: 11 },
-    { name: "Flamingos", artist: "Baco Exu do Blues", playcount: 9 },
-    { name: "MYSTERY", artist: "Turnstile", playcount: 8 },
+    { name: "Negro Drama", artist: "Racionais MC's", playcount: 21, duration: 305 },
+    { name: "Gorgeous", artist: "Little Simz", playcount: 18, duration: 198 },
+    { name: "Julieta", artist: "BK'", playcount: 17, duration: 244 },
+    { name: "Hat-trick", artist: "Djonga", playcount: 14, duration: 187 },
+    { name: "Starburster", artist: "Fontaines D.C.", playcount: 12, duration: 212 },
+    { name: "A Carne", artist: "Elza Soares", playcount: 11, duration: 226 },
+    { name: "Flamingos", artist: "Baco Exu do Blues", playcount: 9, duration: 259 },
+    { name: "MYSTERY", artist: "Turnstile", playcount: 8, duration: 143 },
   ],
   topAlbums: [
-    { name: "Sobrevivendo no Inferno", artist: "Racionais MC's", playcount: 64 },
+    { name: "Sobrevivendo no Inferno", artist: "Racionais MC's", playcount: 64, capa: "" },
     { name: "Gigantes", artist: "BK'", playcount: 51 },
     { name: "NO THANK YOU", artist: "Little Simz", playcount: 44 },
     { name: "Romances Sangrentos", artist: "Djonga", playcount: 33 },
@@ -164,17 +206,21 @@ const BASE = {
   ],
 };
 
-export function demo(periodId) {
-  const m = periodId === "7day" ? 1 : periodId === "1month" ? 4.3 : 52;
-  const pm = periodId === "7day" ? 1 : periodId === "1month" ? 3.6 : 44;
+export function demo(periodId, offset = 0) {
+  const m = periodId === "semana" ? 1 : periodId === "mes" ? 4.3 : 52;
+  const pm = periodId === "semana" ? 1 : periodId === "mes" ? 3.6 : 44;
   const r = (n) => Math.round(n * m);
+  const j = C.janela(periodId, offset);
   return {
     ...BASE,
     period: periodId,
+    offset,
+    janela: j,
     count: Math.round(512 * m),
     prevCount: Math.round(391 * pm),
-    uniqueArtists: periodId === "7day" ? 48 : periodId === "1month" ? 173 : 812,
+    uniqueArtists: periodId === "semana" ? 48 : periodId === "mes" ? 173 : 812,
     segundos: Math.round(512 * m * 214),
+    mediaDur: 214,
     duracaoEstimada: false,
     topArtists: BASE.topArtists.map((a) => ({ ...a, playcount: r(a.playcount) })),
     topTracks: BASE.topTracks.map((t) => ({ ...t, playcount: r(t.playcount) })),

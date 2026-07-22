@@ -14,12 +14,20 @@
    - em output:'server' (com adapter) toda rota ja e sob demanda, entao ela
      funciona de verdade e a chave nunca sai do servidor. */
 
+/* Somente leitura pública. Se um método novo for usado na camada de
+   dados, ele PRECISA ser adicionado aqui — senão a rota o bloqueia. */
 const ALLOWED = new Set([
   "user.getinfo",
   "user.getrecenttracks",
   "user.gettopartists",
   "user.gettoptracks",
   "user.gettopalbums",
+  "user.getweeklyartistchart",
+  "user.getweeklytrackchart",
+  "user.getweeklyalbumchart",
+  "user.getweeklychartlist",
+  "album.getinfo",
+  "artist.getinfo",
 ]);
 
 const json = (body, status = 200, extra = {}) =>
@@ -35,7 +43,7 @@ export async function GET({ url }) {
   if (method === "ping") return json({ ok: true });
 
   if (!method || !ALLOWED.has(method)) {
-    return json({ error: 1, message: "Método não permitido." }, 400);
+    return json({ error: 1, message: `Método não permitido: ${method || "(vazio)"}` }, 400);
   }
 
   const key = import.meta.env.LASTFM_API_KEY;
@@ -48,7 +56,7 @@ export async function GET({ url }) {
   // A doc do Last.fm pede um User-Agent identificavel. So da pra definir aqui
   // no servidor: o navegador bloqueia esse header no fetch.
   // >>> Troque a URL e o e-mail pelos seus antes de publicar. <<<
-  const UA = "RuidoApp/0.6 (+https://ruido.exemplo.com.br; contato@exemplo.com.br)";
+  const UA = "FaixaApp/1.0 (+https://faixa.exemplo.com.br; contato@exemplo.com.br)";
 
   try {
     const res = await fetch(`https://ws.audioscrobbler.com/2.0/?${params}`, {

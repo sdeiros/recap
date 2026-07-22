@@ -1,7 +1,7 @@
 /* Service worker mínimo: só o suficiente pro app ser instalável
    e abrir rápido. Nada de cache agressivo — os dados do Last.fm
    precisam estar sempre frescos. */
-const CACHE = "ruido-v1";
+const CACHE = "faixa-v1";
 const SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

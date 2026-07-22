@@ -1,15 +1,15 @@
 {
-  "name": "ruido",
+  "name": "faixa",
   "type": "module",
-  "version": "0.7.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview"
+    "build": "node scripts/checar-metodos.mjs && astro build",
+    "preview": "astro preview",
+    "checar": "node scripts/checar-metodos.mjs"
   },
   "dependencies": {
-    "@astrojs/node": "^11.0.2",
     "astro": "^7.0.0"
   }
 }
