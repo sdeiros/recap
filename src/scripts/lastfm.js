@@ -86,29 +86,40 @@ async function contar(user, from, to) {
   return num(r?.recenttracks?.["@attr"]?.total);
 }
 
-/* capa do álbum: o chart por intervalo não traz imagem, então buscamos */
-async function buscarCapa(artista, album) {
+/* Arte em alta pelo Deezer (via nossa rota). Só funciona no modo
+   servidor; em estático a rota não existe e caímos no Last.fm. */
+let temArte = null;
+async function arteDisponivel() {
+  if (temArte !== null) return temArte;
   try {
-    const r = await call({ method: "album.getinfo", artist: artista, album });
-    return capaDe(r?.album?.image);
+    const r = await fetch("/api/arte?tipo=ping");
+    const j = r.ok ? await r.json().catch(() => null) : null;
+    temArte = j?.ok === true;
+  } catch (_) {
+    temArte = false;
+  }
+  return temArte;
+}
+
+async function arteDeezer(tipo, artista, album) {
+  if (!(await arteDisponivel())) return "";
+  try {
+    const qs = new URLSearchParams({ tipo, artista: artista || "", album: album || "" });
+    const r = await fetch(`/api/arte?${qs}`);
+    const j = await r.json();
+    return j?.url || "";
   } catch (_) {
     return "";
   }
 }
 
-/* capa de faixa: tenta o track.getInfo para achar o álbum/cover da música */
-async function buscarCapaFaixa(artista, faixa) {
+/* capa de álbum: Deezer primeiro, Last.fm como reserva */
+async function buscarCapa(artista, album) {
+  const alta = await arteDeezer("album", artista, album);
+  if (alta) return alta;
   try {
-    const r = await call({ method: "track.getInfo", artist: artista, track: faixa });
-    const img = capaDe(r?.track?.album?.image);
-    if (img) return img;
-    // fallback: se não tiver imagem via track.getInfo, tenta buscar pelo álbum explicitamente
-    const albumName = r?.track?.album?.["#text"] || r?.track?.album?.title;
-    if (albumName) {
-      const byAlbum = await buscarCapa(artista, albumName);
-      if (byAlbum) return byAlbum;
-    }
-    return "";
+    const r = await call({ method: "album.getinfo", artist: artista, album });
+    return capaDe(r?.album?.image);
   } catch (_) {
     return "";
   }
@@ -142,6 +153,9 @@ export async function load(user, periodId, offset = 0) {
     [].concat(arr || []).sort((a, b) => num(b.playcount) - num(a.playcount));
 
   const artistas = ordenar(artChart?.weeklyartistchart?.artist);
+  /* foto do artista nº1, para os layouts que usam imagem de artista */
+  let fotoArtista = "";
+  if (artistas[0]?.name) fotoArtista = await arteDeezer("artist", artistas[0].name, "");
   const faixas = ordenar(trkChart?.weeklytrackchart?.track);
   const albuns = ordenar(albChart?.weeklyalbumchart?.album);
 
@@ -166,48 +180,6 @@ export async function load(user, periodId, offset = 0) {
     })
   );
 
-  // Prioriza a capa da faixa mais ouvida (top track). Se existir, usa como capa principal.
-  try {
-    const topTrackRaw = faixas[0];
-    if (topTrackRaw) {
-      const trackArtist = topTrackRaw.artist?.["#text"] || topTrackRaw.artist?.name || "";
-      const trackName = topTrackRaw.name;
-      const capaFaixa = await buscarCapaFaixa(trackArtist, trackName);
-      if (capaFaixa) {
-        if (topAlbuns.length === 0) {
-          topAlbuns[0] = { name: trackName, artist: trackArtist, playcount: num(topTrackRaw.playcount), capa: capaFaixa };
-        } else {
-          topAlbuns[0].capa = capaFaixa;
-          // opcional: mostrar o nome da faixa no topo para coerência visual
-          topAlbuns[0].name = trackName;
-          topAlbuns[0].artist = trackArtist;
-        }
-      }
-    }
-  } catch (_) {
-    // não bloqueia o fluxo se a busca falhar
-  }
-
-  // prepara topTracks com possível capa para as faixas mais populares
-  const topTracks = faixas.slice(0, 8).map((t) => ({
-    name: t.name,
-    artist: t.artist?.["#text"] || t.artist?.name || "",
-    playcount: num(t.playcount),
-    duration: 0,
-    capa: "",
-  }));
-  // tenta obter capa para as topTracks (top 3)
-  await Promise.all(
-    topTracks.slice(0, 3).map(async (t, i) => {
-      try {
-        const c = await buscarCapaFaixa(t.artist, t.name);
-        if (c) topTracks[i].capa = c;
-      } catch (_) {
-        // ignore
-      }
-    })
-  );
-
   return {
     period: periodId,
     offset,
@@ -217,15 +189,18 @@ export async function load(user, periodId, offset = 0) {
     count,
     prevCount,
     uniqueArtists: artistas.length,
+    artistImage: fotoArtista,
     clock,
     segundos: Math.round(count * mediaDur),
     mediaDur,
     duracaoEstimada: !temDuracao,
     topArtists: artistas.slice(0, 8).map((a) => ({ name: a.name, playcount: num(a.playcount) })),
-    topTracks: topTracks,
-    topAlbums: topAlbuns,
-
-  
+    topTracks: faixas.slice(0, 8).map((t) => ({
+      name: t.name,
+      artist: t.artist?.["#text"] || t.artist?.name || "",
+      playcount: num(t.playcount),
+      duration: 0,
+    })),
     topAlbums: topAlbuns,
   };
 }

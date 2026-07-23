@@ -24,9 +24,6 @@ const MESES = [
 
 const seg = (d) => Math.floor(d.getTime() / 1000);
 
-// multiplicador opcional para reforçar tipografia/espaçamento nos cartazes
-const SCALE_BOOST = 1.08;
-
 /* Janela de tempo de um período.
    Semana é deslizante; mês e ano são de calendário, e o deslocamento
    anda para trás (0 = atual, 1 = anterior, e assim por diante). */
@@ -39,14 +36,13 @@ export function janela(periodoId, offset = 0) {
     const fim = offset === 0 ? agora : fimMes;
     const antIni = new Date(ini.getFullYear(), ini.getMonth() - 1, 1, 0, 0, 0);
     const nome = MESES[ini.getMonth()];
-    const nomeCap = nome.charAt(0).toUpperCase() + nome.slice(1);
     return {
       from: seg(ini),
       to: seg(fim),
       antFrom: seg(antIni),
       antTo: seg(ini),
-      poster: nomeCap,
-      rotulo: nomeCap,
+      poster: nome.toUpperCase(),
+      rotulo: `${nome.toUpperCase()} ${ini.getFullYear()}`,
       curto: `${nome} de ${ini.getFullYear()}`,
       emAndamento: offset === 0,
     };
@@ -69,17 +65,14 @@ export function janela(periodoId, offset = 0) {
   }
 
   /* semana: últimos 7 dias */
-  // Semana começa na segunda-feira; offset permite semanas anteriores
-  const day = agora.getDay(); // 0 = Domingo, 1 = Segunda
-  const daysSinceMonday = (day + 6) % 7; // 0 se for segunda
-  const ini = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() - daysSinceMonday - offset * 7, 0, 0, 0);
-  const fim = offset === 0 ? agora : new Date(ini.getFullYear(), ini.getMonth(), ini.getDate() + 7, 0, 0, 0);
+  const fim = agora;
+  const ini = new Date(agora.getTime() - 7 * 864e5);
   const f = (d) =>
     d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).toUpperCase().replace(".", "");
   return {
     from: seg(ini),
     to: seg(fim),
-    antFrom: seg(new Date(ini.getFullYear(), ini.getMonth(), ini.getDate() - 7, 0, 0, 0)),
+    antFrom: seg(new Date(agora.getTime() - 14 * 864e5)),
     antTo: seg(ini),
     poster: "SEMANA",
     rotulo: `${f(ini)} – ${f(fim)}`,
@@ -213,33 +206,12 @@ export function formatTempo(seg, curto) {
   return curto ? `${m}min` : `${m} minutos`;
 }
 
-/* Escolhe o 'álbum' principal para o cartaz; prefere a capa da faixa
-   mais ouvida (topTracks[0]) quando disponível. Retorna objeto com
-   {name, artist, capa, playcount} ou null. */
-function primaryAlbum(data) {
-  if (!data) return null;
-  if (Array.isArray(data.topTracks) && data.topTracks[0]?.capa) {
-    const t = data.topTracks[0];
-    return { name: t.name, artist: t.artist, capa: t.capa, playcount: t.playcount };
-  }
-  return (data.topAlbums || [])[0] || null;
-}
-
 function strings(data) {
-  const p = PERIODS.find((x) => x.id === data.period) || PERIODS[0];
-  const j = janela(data.period, 0);
-  const from = new Date(j.from * 1000);
-  const to = new Date(j.to * 1000);
-  const fd = (d) =>
-    d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).toUpperCase().replace(".", "");
-  let range;
-  if (p.recap) {
-    range = `${from.getFullYear()}${to.getFullYear() !== from.getFullYear() ? "–" + to.getFullYear() : ""}`;
-  } else if (p.id === "mes") {
-    range = j.poster; // apenas o nome do mês (ex: Julho)
-  } else {
-    range = `${fd(from)} – ${fd(to)}`;
-  }
+  const base = PERIODS.find((x) => x.id === data.period) || PERIODS[0];
+  /* a janela vem pronta da camada de dados; o fallback é só defesa */
+  const j = data.janela || janela(base.id, data.offset || 0);
+  const p = { ...base, poster: j.poster };
+  const range = j.rotulo;
   const delta = data.prevCount > 0 ? Math.round(((data.count - data.prevCount) / data.prevCount) * 100) : null;
   return {
     p,
@@ -248,7 +220,10 @@ function strings(data) {
     delta,
     deltaTxt: delta === null ? "" : `${delta >= 0 ? "↑" : "↓"} ${Math.abs(delta)}% vs. ${p.prev}`,
     unique: (data.uniqueArtists || 0).toLocaleString("pt-BR"),
-    album: primaryAlbum(data),
+    album: (data.topAlbums || [])[0] || null,
+    emAndamento: j.emAndamento,
+    curto: j.curto,
+    vazio: (data.count || 0) === 0 && (data.topArtists || []).length === 0,
     handle: (data.assinatura ?? "").trim()
       ? data.assinatura.trim()
       : data.mostrarHandle
@@ -277,7 +252,7 @@ function strings(data) {
    LAYOUT 1 — MIXTAPE (cor chapada, tipo condensado, grid)
    ============================================================ */
 function drawMixtape(ctx, W, H, data) {
-  const s = (W / 1080) * SCALE_BOOST;
+  const s = W / 1080;
   const st = strings(data);
   const tall = H >= W * 1.6;
   const square = H <= W * 1.05;
@@ -298,8 +273,8 @@ function drawMixtape(ctx, W, H, data) {
 
   /* ---------- topo: capa, ou bloco de cor como plano B ---------- */
   const alturaBanda = tall ? H * 0.3 : square ? H * 0.26 : H * 0.28;
-  const capa = primaryAlbum(data);
-  let y = bandaTopo(ctx, W, H, capa, alturaBanda, FUNDO);
+  const capa = (data.topAlbums || [])[0];
+  let y = bandaTopo(ctx, W, H, data, alturaBanda, FUNDO);
 
   /* no recap o ano toma a banda: é o assunto do cartaz */
   if (y && st.p.recap) {
@@ -319,16 +294,18 @@ function drawMixtape(ctx, W, H, data) {
   }
 
   if (!y) {
-    /* sem capa: mantém o bloco de cor chapada */
+    /* sem capa: bloco de cor chapada, com o período como título */
     ctx.fillStyle = accent;
     ctx.fillRect(0, 0, W, alturaBanda);
+
     ctx.fillStyle = FUNDO;
-    tracking(ctx, 4 * s);
+    tracking(ctx, 5 * s);
     ctx.font = `700 ${24 * s}px Archivo`;
-    ctx.fillText("FAIXA", pad, alturaBanda - 46 * s);
+    ctx.fillText("FAIXA", pad, 92 * s);
     tracking(ctx, 0);
-    ctx.font = `${Math.min(alturaBanda * 0.42, 150 * s)}px Anton`;
-    ctx.fillText(st.p.recap ? "RECAP" : st.p.poster, pad, alturaBanda - 62 * s + 0);
+
+    const titulo = st.p.recap ? `RECAP ${st.range}` : st.p.poster;
+    writeFit(ctx, titulo, pad, alturaBanda - 62 * s, W - pad * 2, alturaBanda * 0.4, 40 * s, "Anton");
     y = alturaBanda;
   }
 
@@ -343,9 +320,9 @@ function drawMixtape(ctx, W, H, data) {
   tracking(ctx, 0);
 
   /* ---------- título: o número é o título ---------- */
-  y += (tall ? 118 : 92) * s;
+  y += (tall ? 166 : 130) * s;
   ctx.fillStyle = CLARO;
-  const numSize = fitText(ctx, st.count, W - pad * 2, (tall ? 150 : 118) * s, "Anton");
+  const numSize = fitText(ctx, st.count, W * 0.42, (tall ? 150 : 118) * s, "Anton");
   ctx.font = `${numSize}px Anton`;
   ctx.fillText(st.count, pad, y);
   const wNum = ctx.measureText(st.count).width;
@@ -358,6 +335,26 @@ function drawMixtape(ctx, W, H, data) {
     ctx.fillStyle = MEIO;
     ctx.font = `500 ${23 * s}px Archivo`;
     ctx.fillText(st.deltaTxt.toUpperCase(), pad + wNum + 20 * s, y - (tall ? 46 : 38) * s);
+  }
+
+  /* ---------- período sem escuta ---------- */
+  if (st.vazio) {
+    const my = y + (tall ? 150 : 110) * s;
+    ctx.fillStyle = CLARO;
+    writeFit(ctx, "NADA TOCADO", pad, my, W - pad * 2, (tall ? 92 : 72) * s, 34 * s, "Anton");
+    ctx.fillStyle = MEIO;
+    ctx.font = `500 ${(tall ? 28 : 24) * s}px Archivo`;
+    ctx.fillText(`Nenhum scrobble em ${st.curto}.`, pad, my + (tall ? 56 : 46) * s);
+
+    ctx.fillStyle = MEIO;
+    tracking(ctx, 2 * s);
+    ctx.font = `600 ${21 * s}px Archivo`;
+    if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.6), pad, H - 52 * s);
+    const m0 = st.p.recap ? `RECAP ${st.range}` : st.p.poster;
+    ctx.fillText(m0, W - pad - ctx.measureText(m0).width, H - 52 * s);
+    tracking(ctx, 0);
+    grain(ctx, W, H, 0.04, Math.round(W * H * 0.00024));
+    return;
   }
 
   /* ---------- duas colunas ---------- */
@@ -449,7 +446,7 @@ function drawMixtape(ctx, W, H, data) {
    LAYOUT 2 — VIDRO (gradiente de malha, muito respiro)
    ============================================================ */
 function drawVidro(ctx, W, H, data) {
-  const s = (W / 1080) * SCALE_BOOST;
+  const s = W / 1080;
   const st = strings(data);
   const tall = H >= W * 1.6;
   const recap = st.p.recap;
@@ -490,7 +487,7 @@ function drawVidro(ctx, W, H, data) {
   const F = "Inter, sans-serif";
 
   /* banda de capa no topo, dissolvendo no gradiente */
-  const banda = bandaTopo(ctx, W, H, primaryAlbum(data), (tall ? 0.28 : 0.24) * H, "rgba(11,11,15,1)");
+  const banda = bandaTopo(ctx, W, H, data, (tall ? 0.28 : 0.24) * H, "rgba(11,11,15,1)");
 
   let topo = banda ? banda + (tall ? 56 : 44) * s : 130 * s;
 
@@ -589,7 +586,7 @@ function drawVidro(ctx, W, H, data) {
    LAYOUT 3 — LAMBE (papel, fita zebrada, tinta chapada)
    ============================================================ */
 function drawLambe(ctx, W, H, data) {
-  const s = (W / 1080) * SCALE_BOOST;
+  const s = W / 1080;
   const st = strings(data);
   const tall = H >= W * 1.6;
   const accent = st.p.recap ? COBALT : PINK;
@@ -606,7 +603,7 @@ function drawLambe(ctx, W, H, data) {
 
   /* banda de capa colada no alto, como recorte de revista */
   let banda = 0;
-  const capL = capaDe(primaryAlbum(data)?.capa);
+  const capL = capaDe(data.artistImage) || capaDe((data.topAlbums || [])[0]?.capa);
   if (capL) {
     const aB = (tall ? 0.24 : 0.2) * H;
     ctx.save();
@@ -719,7 +716,7 @@ function drawLambe(ctx, W, H, data) {
    LAYOUT 4 — XEROX (retícula de meio-tom, zine)
    ============================================================ */
 function drawXerox(ctx, W, H, data) {
-  const s = (W / 1080) * SCALE_BOOST;
+  const s = W / 1080;
   const st = strings(data);
   const tall = H >= W * 1.6;
   const accent = st.p.recap ? GOLD : PINK;
@@ -734,7 +731,7 @@ function drawXerox(ctx, W, H, data) {
   /* banda de capa dessaturada, como foto de fotocópia */
   const alturaB = (tall ? 0.26 : 0.22) * H;
   let banda = 0;
-  const cap = capaDe(primaryAlbum(data)?.capa);
+  const cap = capaDe(data.artistImage) || capaDe((data.topAlbums || [])[0]?.capa);
   if (cap) {
     ctx.save();
     ctx.beginPath();
@@ -885,9 +882,10 @@ function carregarImagem(src, comCors) {
 /* Baixa as capas antes de desenhar. Pelo proxy quando existe (garante
    que o download do PNG continue funcionando); senão tenta CORS direto. */
 export async function precarregarCapas(dados) {
-  const alb = (dados?.topAlbums || []).map((a) => a.capa).filter(Boolean);
-  const trk = (dados?.topTracks || []).map((t) => t.capa).filter(Boolean);
-  const urls = Array.from(new Set([...alb, ...trk]));
+  const urls = [
+    ...(dados?.topAlbums || []).map((a) => a.capa),
+    dados?.artistImage,
+  ].filter(Boolean);
   if (!urls.length) return;
   const proxy = await temProxy();
   await Promise.all(
@@ -923,8 +921,6 @@ function desenharCapa(ctx, album, x, y, lado, corFundo, corTexto, fonte) {
   const im = capaDe(album?.capa);
   if (im) {
     ctx.save();
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
     ctx.beginPath();
     ctx.rect(x, y, lado, lado);
     ctx.clip();
@@ -948,19 +944,18 @@ function desenharCapa(ctx, album, x, y, lado, corFundo, corTexto, fonte) {
   ctx.strokeRect(x, y, lado, lado);
 }
 
-/* Banda de imagem no topo: capa cobrindo a largura, dissolvendo
-   na cor de fundo do layout. Devolve a altura ocupada — 0 quando
-   não há capa, e aí o layout usa o plano B. */
-function bandaTopo(ctx, W, H, album, altura, corFundo) {
-  const im = capaDe(album?.capa);
+/* Banda de imagem no topo, dissolvendo na cor de fundo do layout.
+   Recebe dados e escolhe a imagem: foto do artista nº1 primeiro,
+   capa do álbum nº1 como reserva. Devolve a altura ocupada, 0 se
+   não houver imagem nenhuma. */
+function bandaTopo(ctx, W, H, data, altura, corFundo) {
+  const im = capaDe(data?.artistImage) || capaDe((data?.topAlbums || [])[0]?.capa);
   if (!im) return 0;
 
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, W, altura);
   ctx.clip();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
   const escala = Math.max(W / im.width, altura / im.height);
   const dw = im.width * escala;
   const dh = im.height * escala;
@@ -980,9 +975,6 @@ function bandaTopo(ctx, W, H, album, altura, corFundo) {
 
 /* desenha a imagem cobrindo a área, sem distorcer */
 function cobrir(ctx, img, x, y, w, h) {
-  if (!img) return;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
   const escala = Math.max(w / img.width, h / img.height);
   const dw = img.width * escala;
   const dh = img.height * escala;
@@ -1028,7 +1020,7 @@ function poeira(ctx, x, y, w, h, s) {
 }
 
 function drawCupom(ctx, W, H, data) {
-  const s = (W / 1080) * SCALE_BOOST;
+  const s = W / 1080;
   const st = strings(data);
   const tall = H >= W * 1.6;
   const M = "'Courier Prime', 'Courier New', monospace";
@@ -1249,7 +1241,7 @@ function drawCupom(ctx, W, H, data) {
    Grade de capas ocupando o topo, listas embaixo.
    ============================================================ */
 function drawMosaico(ctx, W, H, data) {
-  const s = (W / 1080) * SCALE_BOOST;
+  const s = W / 1080;
   const st = strings(data);
   const tall = H >= W * 1.6;
   const accent = st.p.recap ? GOLD : PINK;
@@ -1352,13 +1344,20 @@ function drawCapa(ctx, W, H, data) {
   const st = strings(data);
   const tall = H >= W * 1.6;
   const accent = st.p.recap ? GOLD : PINK;
-  const alvo = primaryAlbum(data);
-  const im = capaDe(alvo?.capa);
+  const alvo = (data.topAlbums || [])[0];
+  const artista = (data.topArtists || [])[0];
+  /* prefere a foto do artista nº1; sem ela, a capa do álbum */
+  const imArtista = capaDe(data.artistImage);
+  const im = imArtista || capaDe(alvo?.capa);
+  const legendaTitulo = imArtista ? (artista?.name || "") : (alvo?.name || "—");
+  const legendaSub = imArtista
+    ? st.metaArtista(artista || { playcount: 0 })
+    : (alvo?.artist || "");
 
   ctx.fillStyle = "#0B0B0D";
   ctx.fillRect(0, 0, W, H);
 
-  /* fundo: a própria capa desfocada, quando existe */
+  /* fundo: a própria imagem desfocada, quando existe */
   if (im) {
     ctx.save();
     ctx.filter = "blur(60px) saturate(1.5)";
@@ -1385,18 +1384,31 @@ function drawCapa(ctx, W, H, data) {
   ctx.shadowColor = "rgba(0,0,0,0.6)";
   ctx.shadowBlur = 60 * s;
   ctx.shadowOffsetY = 24 * s;
-  desenharCapa(ctx, alvo, cx, cy, lado, "#1A1A1F", "#3E3E46", "Anton");
+  if (im) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cx, cy, lado, lado);
+    ctx.clip();
+    const e = Math.max(lado / im.width, lado / im.height);
+    ctx.drawImage(im, cx + (lado - im.width * e) / 2, cy + (lado - im.height * e) / 2, im.width * e, im.height * e);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.lineWidth = Math.max(1, lado * 0.006);
+    ctx.strokeRect(cx, cy, lado, lado);
+  } else {
+    desenharCapa(ctx, alvo, cx, cy, lado, "#1A1A1F", "#3E3E46", "Anton");
+  }
   ctx.restore();
 
   let y = cy + lado + (tall ? 86 : 62) * s;
 
   ctx.textAlign = "center";
   ctx.fillStyle = accent;
-  writeFit(ctx, (alvo?.name || "—").toUpperCase(), W / 2, y, W - pad * 2, (tall ? 74 : 58) * s, 28 * s, "Anton");
+  writeFit(ctx, (legendaTitulo || "—").toUpperCase(), W / 2, y, W - pad * 2, (tall ? 74 : 58) * s, 28 * s, "Anton");
   y += (tall ? 48 : 40) * s;
   ctx.fillStyle = "#B9B9C0";
   ctx.font = `500 ${(tall ? 30 : 26) * s}px Archivo`;
-  ctx.fillText(truncate(ctx, alvo?.artist || "", W - pad * 2), W / 2, y);
+  ctx.fillText(truncate(ctx, legendaSub || "", W - pad * 2), W / 2, y);
   ctx.textAlign = "left";
 
   /* faixa de métricas */

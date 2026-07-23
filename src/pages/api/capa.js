@@ -9,7 +9,12 @@
    ============================================================ */
 
 /* só o CDN de imagens do Last.fm: evita virar proxy aberto */
-const PERMITIDOS = [/^https:\/\/lastfm\.freetls\.fastly\.net\//, /^https:\/\/([a-z0-9-]+\.)?last\.fm\//];
+const PERMITIDOS = [
+  /^https:\/\/lastfm\.freetls\.fastly\.net\//,
+  /^https:\/\/([a-z0-9-]+\.)?last\.fm\//,
+  /^https:\/\/([a-z0-9-]+\.)?dzcdn\.net\//,
+  /^https:\/\/([a-z0-9-]+\.)?deezer\.com\//,
+];
 
 export async function GET({ url }) {
   const alvo = url.searchParams.get("u");
