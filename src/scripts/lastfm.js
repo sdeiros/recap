@@ -101,10 +101,15 @@ async function arteDisponivel() {
   return temArte;
 }
 
-async function arteDeezer(tipo, artista, album) {
+async function arteDeezer(tipo, artista, album, faixa = "") {
   if (!(await arteDisponivel())) return "";
   try {
-    const qs = new URLSearchParams({ tipo, artista: artista || "", album: album || "" });
+    const qs = new URLSearchParams({
+      tipo,
+      artista: artista || "",
+      album: album || "",
+      faixa: faixa || "",
+    });
     const r = await fetch(`/api/arte?${qs}`);
     const j = await r.json();
     return j?.url || "";
@@ -125,6 +130,14 @@ async function buscarCapa(artista, album) {
   }
 }
 
+async function buscarFotoArtista(artista) {
+  return artista ? arteDeezer("artist", artista, "") : "";
+}
+
+async function buscarCapaFaixa(artista, faixa) {
+  return faixa ? arteDeezer("track", artista, "", faixa) : "";
+}
+
 export async function load(user, periodId, offset = 0) {
   const j = C.janela(periodId, offset);
 
@@ -139,10 +152,11 @@ export async function load(user, periodId, offset = 0) {
     if (uts) clock[new Date(uts * 1000).getHours()]++;
   });
 
-  const [count, prevCount, artChart, trkChart, albChart, topGeral] = await Promise.all([
+  const [count, prevCount, artChart, prevArtChart, trkChart, albChart, topGeral] = await Promise.all([
     contar(user, j.from, j.to),
     contar(user, j.antFrom, j.antTo),
     call({ method: "user.getweeklyartistchart", user, from: j.from, to: j.to }),
+    call({ method: "user.getweeklyartistchart", user, from: j.antFrom, to: j.antTo }),
     call({ method: "user.getweeklytrackchart", user, from: j.from, to: j.to }),
     call({ method: "user.getweeklyalbumchart", user, from: j.from, to: j.to }),
     /* uma chamada só para estimar a duração média das faixas */
@@ -153,9 +167,7 @@ export async function load(user, periodId, offset = 0) {
     [].concat(arr || []).sort((a, b) => num(b.playcount) - num(a.playcount));
 
   const artistas = ordenar(artChart?.weeklyartistchart?.artist);
-  /* foto do artista nº1, para os layouts que usam imagem de artista */
-  let fotoArtista = "";
-  if (artistas[0]?.name) fotoArtista = await arteDeezer("artist", artistas[0].name, "");
+  const artistasAnteriores = ordenar(prevArtChart?.weeklyartistchart?.artist);
   const faixas = ordenar(trkChart?.weeklytrackchart?.track);
   const albuns = ordenar(albChart?.weeklyalbumchart?.album);
 
@@ -166,19 +178,52 @@ export async function load(user, periodId, offset = 0) {
   const temDuracao = duracoes.length > 0;
   const mediaDur = temDuracao ? duracoes.reduce((a, b) => a + b, 0) / duracoes.length : 210;
 
-  /* capas dos álbuns que os layouts realmente usam */
-  const topAlbuns = albuns.slice(0, 6).map((a) => ({
+  const topArtistas = artistas.slice(0, 8).map((a) => ({
+    name: a.name,
+    playcount: num(a.playcount),
+    image: "",
+  }));
+
+  const topFaixas = faixas.slice(0, 8).map((t) => ({
+    name: t.name,
+    artist: t.artist?.["#text"] || t.artist?.name || "",
+    playcount: num(t.playcount),
+    duration: 0,
+    capa: "",
+  }));
+
+  /* até dez capas: os layouts editoriais e de parada usam mais itens */
+  const topAlbuns = albuns.slice(0, 10).map((a) => ({
     name: a.name,
     artist: a.artist?.["#text"] || a.artist?.name || "",
     playcount: num(a.playcount),
     capa: "",
   }));
-  await Promise.all(
-    topAlbuns.map(async (a, i) => {
-      if (!a.artist || !a.name) return;
-      topAlbuns[i].capa = await buscarCapa(a.artist, a.name);
-    })
-  );
+
+  const anteriorRaw = artistasAnteriores[0];
+  const topAnterior = anteriorRaw
+    ? { name: anteriorRaw.name, playcount: num(anteriorRaw.playcount), image: "" }
+    : null;
+
+  /* Todas as artes são buscadas em paralelo. A rota tem cache de um dia. */
+  await Promise.all([
+    ...topArtistas.slice(0, 5).map(async (a) => {
+      a.image = await buscarFotoArtista(a.name);
+    }),
+    ...topFaixas.slice(0, 5).map(async (t) => {
+      t.capa = await buscarCapaFaixa(t.artist, t.name);
+    }),
+    ...topAlbuns.map(async (a) => {
+      if (a.artist && a.name) a.capa = await buscarCapa(a.artist, a.name);
+    }),
+    topAnterior
+      ? (async () => {
+          topAnterior.image = await buscarFotoArtista(topAnterior.name);
+        })()
+      : Promise.resolve(),
+  ]);
+
+  const fotoArtista = topArtistas[0]?.image || "";
 
   return {
     period: periodId,
@@ -190,17 +235,13 @@ export async function load(user, periodId, offset = 0) {
     prevCount,
     uniqueArtists: artistas.length,
     artistImage: fotoArtista,
+    prevTopArtist: topAnterior,
     clock,
     segundos: Math.round(count * mediaDur),
     mediaDur,
     duracaoEstimada: !temDuracao,
-    topArtists: artistas.slice(0, 8).map((a) => ({ name: a.name, playcount: num(a.playcount) })),
-    topTracks: faixas.slice(0, 8).map((t) => ({
-      name: t.name,
-      artist: t.artist?.["#text"] || t.artist?.name || "",
-      playcount: num(t.playcount),
-      duration: 0,
-    })),
+    topArtists: topArtistas,
+    topTracks: topFaixas,
     topAlbums: topAlbuns,
   };
 }
@@ -211,25 +252,27 @@ const BASE = {
   nowPlaying: { name: "Nova Iorque", artist: "BK'" },
   clock: [4, 2, 1, 0, 0, 1, 3, 9, 18, 22, 25, 31, 44, 38, 29, 26, 30, 35, 41, 48, 39, 27, 15, 8],
   topArtists: [
-    { name: "Racionais MC's", playcount: 87 },
-    { name: "BK'", playcount: 74 },
-    { name: "Little Simz", playcount: 61 },
-    { name: "Djonga", playcount: 55 },
-    { name: "Fontaines D.C.", playcount: 43 },
+    { name: "Racionais MC's", playcount: 87, image: "" },
+    { name: "BK'", playcount: 74, image: "" },
+    { name: "Little Simz", playcount: 61, image: "" },
+    { name: "Djonga", playcount: 55, image: "" },
+    { name: "Fontaines D.C.", playcount: 43, image: "" },
     { name: "Elza Soares", playcount: 38 },
     { name: "Baco Exu do Blues", playcount: 31 },
     { name: "Turnstile", playcount: 24 },
   ],
   topTracks: [
-    { name: "Negro Drama", artist: "Racionais MC's", playcount: 21, duration: 305 },
-    { name: "Gorgeous", artist: "Little Simz", playcount: 18, duration: 198 },
-    { name: "Julieta", artist: "BK'", playcount: 17, duration: 244 },
-    { name: "Hat-trick", artist: "Djonga", playcount: 14, duration: 187 },
-    { name: "Starburster", artist: "Fontaines D.C.", playcount: 12, duration: 212 },
-    { name: "A Carne", artist: "Elza Soares", playcount: 11, duration: 226 },
-    { name: "Flamingos", artist: "Baco Exu do Blues", playcount: 9, duration: 259 },
-    { name: "MYSTERY", artist: "Turnstile", playcount: 8, duration: 143 },
+    { name: "Negro Drama", artist: "Racionais MC's", playcount: 21, duration: 305, capa: "" },
+    { name: "Gorgeous", artist: "Little Simz", playcount: 18, duration: 198, capa: "" },
+    { name: "Julieta", artist: "BK'", playcount: 17, duration: 244, capa: "" },
+    { name: "Hat-trick", artist: "Djonga", playcount: 14, duration: 187, capa: "" },
+    { name: "Starburster", artist: "Fontaines D.C.", playcount: 12, duration: 212, capa: "" },
+    { name: "A Carne", artist: "Elza Soares", playcount: 11, duration: 226, capa: "" },
+    { name: "Flamingos", artist: "Baco Exu do Blues", playcount: 9, duration: 259, capa: "" },
+    { name: "MYSTERY", artist: "Turnstile", playcount: 8, duration: 143, capa: "" },
   ],
+  prevTopArtist: { name: "Emicida", playcount: 69, image: "" },
+  artistImage: "",
   topAlbums: [
     { name: "Sobrevivendo no Inferno", artist: "Racionais MC's", playcount: 64, capa: "" },
     { name: "Gigantes", artist: "BK'", playcount: 51 },

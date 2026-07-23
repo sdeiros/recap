@@ -101,10 +101,23 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
             <div class="bloco">
               <span class="rotulo">estilo</span>
               <div class="opcoes" id="op-layout"></div>
+              <p class="dica" id="dica-layout-periodo"></p>
             </div>
             <div class="bloco">
               <span class="rotulo">formato</span>
               <div class="opcoes" id="op-res"></div>
+            </div>
+            <div class="bloco">
+              <span class="rotulo">cores do cartaz</span>
+              <div class="paletas" id="op-tema"></div>
+              <div class="cores-custom oculto" id="cores-custom">
+                <label><span>fundo</span><input type="color" id="cor-bg" /></label>
+                <label><span>texto</span><input type="color" id="cor-text" /></label>
+                <label><span>destaque</span><input type="color" id="cor-accent" /></label>
+                <label><span>contraponto</span><input type="color" id="cor-accent2" /></label>
+                <button class="link" id="btn-reset-cores" type="button">restaurar cores</button>
+              </div>
+              <p class="dica">As fotos continuam intactas; a paleta recolore apenas o projeto gráfico.</p>
             </div>
             <div class="bloco">
               <span class="rotulo">assinatura</span>
@@ -177,17 +190,45 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
         quem: $("#quem"),
       };
 
+      const VISUAL_SLOT = "faixa:visual-v11";
+      const CORES_PADRAO = { bg: "#0D0D0F", text: "#FFFFFF", accent: "#FF4A1C", accent2: "#1E2BFF" };
+      let visualSalvo = {};
+      try {
+        visualSalvo = JSON.parse(localStorage.getItem(VISUAL_SLOT) || "{}") || {};
+      } catch (_) {
+        visualSalvo = {};
+      }
+      const layoutSalvoExiste = C.LAYOUTS.some((l) => l.id === visualSalvo.layout);
+      const temaSalvoExiste = C.THEMES.some((t) => t.id === visualSalvo.themeId);
+
       let estado = {
         dados: null,
         periodo: "semana",
         offset: 0,
-        layout: "mixtape",
-        res: "story",
+        layout: layoutSalvoExiste ? visualSalvo.layout : C.PERIOD_DEFAULT_LAYOUT.semana,
+        layoutManual: layoutSalvoExiste,
+        res: C.RESOLUTIONS.some((r) => r.id === visualSalvo.res) ? visualSalvo.res : "story",
+        themeId: temaSalvoExiste ? visualSalvo.themeId : "original",
+        customColors: { ...CORES_PADRAO, ...(visualSalvo.customColors || {}) },
         demo: false,
         user: "",
         assinatura: "",
         mostrarHandle: false,
       };
+
+      function salvarVisual() {
+        try {
+          localStorage.setItem(
+            VISUAL_SLOT,
+            JSON.stringify({
+              layout: estado.layout,
+              res: estado.res,
+              themeId: estado.themeId,
+              customColors: estado.customColors,
+            })
+          );
+        } catch (_) {}
+      }
 
       /* ---------------- controles ---------------- */
       const barra = $("#periodos");
@@ -222,17 +263,108 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
         });
       }
 
-      opcoes(
-        "#op-layout",
-        C.LAYOUTS.map((l) => ({ id: l.id, titulo: l.label, nota: l.note })),
-        () => estado.layout,
-        (id) => (estado.layout = id)
-      );
+      const nomePeriodo = { semana: "semana", mes: "mês", ano: "ano" };
+
+      function botaoLayout(layout, recomendado) {
+        const b = document.createElement("button");
+        b.className = "opcao opcao-layout";
+        b.setAttribute("aria-pressed", String(layout.id === estado.layout));
+        b.innerHTML =
+          `<span class="marcador"></span><span class="txt"><span class="linha-opcao"><b>${esc(layout.label)}</b>` +
+          (recomendado ? `<em>indicado</em>` : "") +
+          `</span><span>${esc(layout.note)}</span></span>`;
+        b.onclick = () => {
+          estado.layout = layout.id;
+          estado.layoutManual = true;
+          salvarVisual();
+          renderLayouts();
+          desenhar();
+        };
+        return b;
+      }
+
+      function renderLayouts() {
+        const cont = $("#op-layout");
+        cont.innerHTML = "";
+        const recomendados = C.LAYOUTS.filter((l) => l.best.includes(estado.periodo));
+        const outros = C.LAYOUTS.filter((l) => !l.best.includes(estado.periodo));
+        const grupo = (titulo, itens, recomendado) => {
+          const h = document.createElement("span");
+          h.className = "grupo-opcoes-titulo";
+          h.textContent = titulo;
+          cont.appendChild(h);
+          itens.forEach((l) => cont.appendChild(botaoLayout(l, recomendado)));
+        };
+        grupo(`melhores para ${nomePeriodo[estado.periodo]}`, recomendados, true);
+        if (outros.length) grupo("também funcionam", outros, false);
+        const atual = C.LAYOUTS.find((l) => l.id === estado.layout);
+        const indicado = atual?.best.includes(estado.periodo);
+        $("#dica-layout-periodo").textContent = indicado
+          ? `${atual.label} aproveita bem os dados deste período.`
+          : `${atual?.label || "Este estilo"} continua disponível, mas rende melhor em ${
+              (atual?.best || []).map((x) => nomePeriodo[x]).join(" ou ")
+            }.`;
+      }
+
+      function renderTemas() {
+        const cont = $("#op-tema");
+        cont.innerHTML = "";
+        C.THEMES.forEach((tema) => {
+          const b = document.createElement("button");
+          b.className = "tema-opcao";
+          b.setAttribute("aria-pressed", String(tema.id === estado.themeId));
+          const cores = tema.id === "custom"
+            ? [estado.customColors.bg, estado.customColors.accent, estado.customColors.accent2]
+            : tema.preview;
+          b.innerHTML = `<span class="amostras">${cores
+            .map((cor) => `<i style="background:${esc(cor)}"></i>`)
+            .join("")}</span><span><b>${esc(tema.label)}</b><small>${esc(tema.note)}</small></span>`;
+          b.onclick = () => {
+            estado.themeId = tema.id;
+            salvarVisual();
+            renderTemas();
+            desenhar();
+          };
+          cont.appendChild(b);
+        });
+        $("#cores-custom").classList.toggle("oculto", estado.themeId !== "custom");
+      }
+
+      function sincronizarCores() {
+        const mapa = { "#cor-bg": "bg", "#cor-text": "text", "#cor-accent": "accent", "#cor-accent2": "accent2" };
+        Object.entries(mapa).forEach(([sel, chave]) => {
+          const campo = $(sel);
+          campo.value = estado.customColors[chave];
+          campo.oninput = (e) => {
+            estado.customColors = { ...estado.customColors, [chave]: e.target.value };
+            estado.themeId = "custom";
+            salvarVisual();
+            renderTemas();
+            desenhar();
+          };
+        });
+      }
+
+      renderLayouts();
+      renderTemas();
+      sincronizarCores();
+      $("#btn-reset-cores").onclick = () => {
+        estado.customColors = { ...CORES_PADRAO };
+        estado.themeId = "custom";
+        sincronizarCores();
+        salvarVisual();
+        renderTemas();
+        desenhar();
+      };
+
       opcoes(
         "#op-res",
         C.RESOLUTIONS.map((r) => ({ id: r.id, titulo: r.label, nota: `${r.w} × ${r.h}` })),
         () => estado.res,
-        (id) => (estado.res = id)
+        (id) => {
+          estado.res = id;
+          salvarVisual();
+        }
       );
 
       document.querySelectorAll('[role="tab"]').forEach((t) => {
@@ -277,6 +409,8 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
         estado.demo = true;
         estado.periodo = "semana";
         estado.offset = 0;
+        if (!estado.layoutManual) estado.layout = C.PERIOD_DEFAULT_LAYOUT.semana;
+        renderLayouts();
         estado.dados = LF.demo("semana", 0);
         abrirApp();
       };
@@ -325,6 +459,8 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
         if (id === estado.periodo && offset === estado.offset) return;
         estado.periodo = id;
         estado.offset = offset;
+        if (!estado.layoutManual) estado.layout = C.PERIOD_DEFAULT_LAYOUT[id] || estado.layout;
+        renderLayouts();
         barra.querySelectorAll("button").forEach((b) =>
           b.setAttribute("aria-pressed", String(b.dataset.id === id))
         );
@@ -454,7 +590,13 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
 
       function desenhar() {
         if (!estado.dados) return;
-        const dados = { ...estado.dados, assinatura: estado.assinatura, mostrarHandle: estado.mostrarHandle };
+        const dados = {
+          ...estado.dados,
+          assinatura: estado.assinatura,
+          mostrarHandle: estado.mostrarHandle,
+          themeId: estado.themeId,
+          customColors: estado.customColors,
+        };
         const res = C.render(el.canvas, estado.layout, estado.res, dados);
         $("#nota-res").textContent = `${res.w} × ${res.h}`;
         /* reinicia a transição de entrada a cada novo desenho */

@@ -1,7 +1,7 @@
 /* ============================================================
    Busca arte em alta resolução no Deezer a partir de nomes.
    O Last.fm diz o que a pessoa ouviu; o Deezer devolve a imagem
-   grande (1000×1000) de capa de álbum e de foto de artista.
+   grande (1000×1000) de capa de álbum, faixa e foto de artista.
 
    Passa pela mesma origem (seu domínio) por dois motivos:
    - a resposta de busca do Deezer não manda cabeçalho CORS;
@@ -30,9 +30,10 @@ async function buscar(tipo, termos) {
 }
 
 export async function GET({ url }) {
-  const tipo = url.searchParams.get("tipo"); // "album" | "artist" | "ping"
+  const tipo = url.searchParams.get("tipo"); // "album" | "artist" | "track" | "ping"
   const artista = (url.searchParams.get("artista") || "").trim();
   const album = (url.searchParams.get("album") || "").trim();
+  const faixa = (url.searchParams.get("faixa") || "").trim();
 
   if (tipo === "ping") return json({ ok: true });
 
@@ -47,6 +48,13 @@ export async function GET({ url }) {
       /* nome do álbum + artista aumenta muito a precisão */
       const alvo = await buscar("album", artista ? `${album} ${artista}` : album);
       const img = alvo?.cover_xl || alvo?.cover_big || "";
+      return json({ url: img });
+    }
+
+    if (tipo === "track" && faixa) {
+      /* a busca de faixa devolve o álbum junto; usamos a capa dele */
+      const alvo = await buscar("track", artista ? `${faixa} ${artista}` : faixa);
+      const img = alvo?.album?.cover_xl || alvo?.album?.cover_big || "";
       return json({ url: img });
     }
 
