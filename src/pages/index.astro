@@ -134,7 +134,7 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
           <div id="aba-numeros" class="oculto" style="display:grid;gap:20px">
             <div class="metricas" id="metricas"></div>
             <div class="bloco">
-              <span class="rotulo">relógio · últimos 200 scrobbles</span>
+              <span class="rotulo">relógio · últimas 200 reproduções</span>
               <div class="relogio" id="relogio"></div>
               <p class="dica">Sempre os 200 mais recentes, independente do período.</p>
             </div>
@@ -520,7 +520,7 @@ const desc = "Estatísticas do seu Last.fm viram cartaz pronto pra Stories e Sta
         const metricasEl = $("#metricas");
         metricasEl.classList.add("anima");
         metricasEl.innerHTML = [
-          [d.count.toLocaleString("pt-BR"), "scrobbles"],
+          [d.count.toLocaleString("pt-BR"), "reproduções"],
           [d.segundos ? C.formatTempo(d.segundos, true) : "—", "tempo"],
           [(d.uniqueArtists || 0).toLocaleString("pt-BR"), "artistas"],
         ]

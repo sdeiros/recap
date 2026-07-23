@@ -390,6 +390,8 @@ function fitText(ctx, text, maxW, startPx, family, weight = "") {
 
 /* encolhe até um piso; abaixo disso, corta */
 function writeFit(ctx, text, x, y, maxW, startPx, minPx, family, weight = "") {
+  text = String(text ?? "");
+  maxW = Math.max(8, Number(maxW) || 8);
   let size = startPx;
   ctx.font = `${weight} ${size}px ${family}`.trim();
   while (size > minPx && ctx.measureText(text).width > maxW) {
@@ -464,6 +466,146 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+
+/* ---------- fechamento comum e área segura ---------- */
+const FOOTER_BASE = 92;
+
+function alturaRodape(W, H) {
+  const s = W / 1080;
+  /* Mais presença visual e respiro, no clima dos references enviados. */
+  const base = H >= W * 1.6 ? 152 : H > W * 1.08 ? 136 : 122;
+  return base * s;
+}
+
+function malhaClaraArea(ctx, x, y, w, h) {
+  ctx.fillStyle = "#E9E5DD";
+  ctx.fillRect(x, y, w, h);
+  [
+    [x + w * 0.88, y + h * 0.12, w * 0.74, "rgba(255,126,61,.62)"],
+    [x + w * 0.14, y + h * 0.88, w * 0.68, "rgba(63,205,197,.42)"],
+    [x + w * 0.66, y + h * 0.54, w * 0.58, "rgba(152,108,255,.16)"],
+  ].forEach(([gx, gy, r, c]) => {
+    const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
+    g.addColorStop(0, c);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+  });
+}
+
+function malhaEscuraArea(ctx, x, y, w, h, quente = false) {
+  ctx.fillStyle = quente ? "#0E0908" : "#07070A";
+  ctx.fillRect(x, y, w, h);
+  const manchas = quente
+    ? [
+        [x + w * 0.16, y + h * 0.18, w * 0.62, "rgba(255,120,35,.46)"],
+        [x + w * 0.94, y + h * 0.56, w * 0.7, "rgba(118,45,255,.22)"],
+      ]
+    : [
+        [x + w * 0.12, y + h * 0.18, w * 0.58, "rgba(255,196,0,.34)"],
+        [x + w * 0.92, y + h * 0.42, w * 0.72, "rgba(0,178,255,.22)"],
+        [x + w * 0.12, y + h * 0.92, w * 0.52, "rgba(255,37,98,.16)"],
+      ];
+  manchas.forEach(([gx, gy, r, c]) => {
+    const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
+    g.addColorStop(0, c);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+  });
+}
+
+function fillFooterBackground(ctx, W, y, h, layoutId, pal) {
+  switch (layoutId) {
+    case "replay":
+      malhaClaraArea(ctx, 0, y, W, h);
+      return { claro: "#111115", fraco: "rgba(17,17,21,.55)", linha: PINK };
+    case "ondas": {
+      const g = ctx.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, "#8F6FA1");
+      g.addColorStop(1, "#6A427C");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, y, W, h);
+      return { claro: "#FFFFFF", fraco: "rgba(255,255,255,.76)", linha: PINK };
+    }
+    case "cupom":
+    case "xerox":
+    case "lambe":
+      ctx.fillStyle = "#ECE7DE";
+      ctx.fillRect(0, y, W, h);
+      return { claro: "#111113", fraco: "rgba(17,17,19,.56)", linha: PINK };
+    case "faixas":
+    case "parada":
+      ctx.fillStyle = "#EEE8DE";
+      ctx.fillRect(0, y, W, h);
+      return { claro: "#121216", fraco: "rgba(18,18,22,.56)", linha: PINK };
+    case "estrela":
+    case "comparativo":
+    case "editorial":
+    case "mixtape":
+    case "vidro":
+    case "mosaico":
+    case "capa":
+      malhaEscuraArea(ctx, 0, y, W, h, true);
+      return { claro: "#F7F4EE", fraco: "rgba(247,244,238,.62)", linha: PINK };
+    default: {
+      const fundo = pal && !pal.original ? mistura(pal.bg, pal.surface || pal.bg, 0.45) : "#121216";
+      const g = ctx.createLinearGradient(0, y, W, y + h);
+      g.addColorStop(0, fundo);
+      g.addColorStop(1, mistura(fundo, pal?.accent || PINK, 0.12));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, y, W, h);
+      const claro = pal && !pal.original ? textoSeguro(fundo, pal.text) : "#F5F2EC";
+      const fraco = claro.includes('#111') ? "rgba(17,17,21,.58)" : "rgba(255,255,255,.7)";
+      return { claro, fraco, linha: pal?.accent || PINK };
+    }
+  }
+}
+
+function drawFaixaFooter(ctx, W, H, data, pal, layoutId = "") {
+  const s = W / 1080;
+  const h = alturaRodape(W, H);
+  const y = H - h;
+  const st = strings(data);
+  const pad = 52 * s;
+  const brandPad = 56 * s;
+  const assinatura = st.handle || (data?.user?.name ? `@${data.user.name}` : "sua escuta em cartaz");
+
+  ctx.save();
+  const { claro, fraco, linha } = fillFooterBackground(ctx, W, y, h, layoutId, pal);
+  ctx.fillStyle = rgbaDe(linha, 0.96);
+  ctx.fillRect(0, y, W, Math.max(4, 5 * s));
+
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  ctx.fillStyle = claro;
+  ctx.font = `700 ${30 * s}px Archivo`;
+  ctx.fillText(truncate(ctx, st.range, W * 0.5), pad, y + 58 * s);
+  ctx.fillStyle = fraco;
+  ctx.font = `500 ${21 * s}px Archivo`;
+  ctx.fillText(truncate(ctx, assinatura, W * 0.56), pad, y + 103 * s);
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = fraco;
+  tracking(ctx, 0.5 * s);
+  ctx.font = `600 ${18 * s}px Archivo`;
+  ctx.fillText("SUA ESCUTA EM", W - brandPad, y + 55 * s);
+  tracking(ctx, 0);
+  ctx.fillStyle = claro;
+  ctx.font = `800 ${35 * s}px Syne`;
+  ctx.fillText("FAIXA", W - brandPad, y + 105 * s);
+  ctx.restore();
+}
+
+function limiteConteudo(H, s, reserva = 24) {
+  return H - reserva * s;
+}
+
+function caberEntre(inicio, fim, quantidade, desejado, minimo) {
+  if (!quantidade) return desejado;
+  return Math.max(minimo, Math.min(desejado, (fim - inicio) / quantidade));
+}
+
 /* ---------- textos derivados dos dados ---------- */
 
 
@@ -510,7 +652,7 @@ function strings(data) {
     /* linha de apoio de cada item: resolve "de quem e" e "quanto tempo" */
     metaArtista: (a) => {
       const seg = (a.playcount || 0) * (data.mediaDur || 210);
-      return `${a.playcount} ${a.playcount === 1 ? "PLAY" : "PLAYS"} · ${formatTempo(seg, true).toUpperCase()}`;
+      return `${a.playcount} REPROD. · ${formatTempo(seg, true).toUpperCase()}`;
     },
     metaFaixa: (t) => {
       const dur = t.duration > 0 ? t.duration : data.mediaDur || 210;
@@ -545,7 +687,7 @@ function drawMixtape(ctx, W, H, data) {
   const colW = (W - pad * 2 - gap) / 2;
 
   /* ---------- topo: capa, ou bloco de cor como plano B ---------- */
-  const alturaBanda = tall ? H * 0.3 : square ? H * 0.26 : H * 0.28;
+  const alturaBanda = tall ? H * 0.255 : square ? H * 0.235 : H * 0.245;
   const capa = (data.topAlbums || [])[0];
   let y = bandaTopo(ctx, W, H, data, alturaBanda, FUNDO);
 
@@ -593,16 +735,15 @@ function drawMixtape(ctx, W, H, data) {
   tracking(ctx, 0);
 
   /* ---------- título: o número é o título ---------- */
-  y += (tall ? 166 : 130) * s;
+  y += (tall ? 136 : 116) * s;
   ctx.fillStyle = CLARO;
-  const numSize = fitText(ctx, st.count, W * 0.42, (tall ? 150 : 118) * s, "Anton");
+  const numSize = fitText(ctx, st.count, W * 0.42, (tall ? 132 : 108) * s, "Anton");
   ctx.font = `${numSize}px Anton`;
   ctx.fillText(st.count, pad, y);
   const wNum = ctx.measureText(st.count).width;
 
   ctx.fillStyle = accent;
-  ctx.font = `700 ${(tall ? 40 : 32) * s}px Archivo`;
-  ctx.fillText("SCROBBLES", pad + wNum + 20 * s, y);
+  writeFit(ctx, "REPRODUÇÕES", pad + wNum + 20 * s, y, W - pad * 2 - wNum - 20 * s, (tall ? 34 : 29) * s, 20 * s, "Archivo", "700");
 
   if (st.deltaTxt) {
     ctx.fillStyle = MEIO;
@@ -617,22 +758,15 @@ function drawMixtape(ctx, W, H, data) {
     writeFit(ctx, "NADA TOCADO", pad, my, W - pad * 2, (tall ? 92 : 72) * s, 34 * s, "Anton");
     ctx.fillStyle = MEIO;
     ctx.font = `500 ${(tall ? 28 : 24) * s}px Archivo`;
-    ctx.fillText(`Nenhum scrobble em ${st.curto}.`, pad, my + (tall ? 56 : 46) * s);
+    ctx.fillText(`Nenhuma reprodução em ${st.curto}.`, pad, my + (tall ? 56 : 46) * s);
 
-    ctx.fillStyle = MEIO;
-    tracking(ctx, 2 * s);
-    ctx.font = `600 ${21 * s}px Archivo`;
-    if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.6), pad, H - 52 * s);
-    const m0 = st.p.recap ? `RECAP ${st.range}` : st.p.poster;
-    ctx.fillText(m0, W - pad - ctx.measureText(m0).width, H - 52 * s);
-    tracking(ctx, 0);
     grain(ctx, W, H, 0.04, Math.round(W * H * 0.00024));
     return;
   }
 
   /* ---------- duas colunas ---------- */
-  const colTop = y + (tall ? 86 : 68) * s;
-  const rowH = tall ? 108 * s : square ? 84 * s : 96 * s;
+  const colTop = y + (tall ? 70 : 58) * s;
+  const rowH = tall ? 94 * s : square ? 78 * s : 86 * s;
   const nomeMax = tall ? 42 * s : 35 * s;
   const nomeMin = tall ? 24 * s : 20 * s;
   const metaPx = tall ? 20 * s : 17 * s;
@@ -666,51 +800,35 @@ function drawMixtape(ctx, W, H, data) {
   ctx.fillStyle = RULE;
   ctx.fillRect(pad + colW + gap / 2 - s, colTop + 36 * s, 2 * s, Math.max(fimL, fimR) - colTop - 94 * s);
 
-  /* ---------- destaque final ---------- */
-  const fy = H - 52 * s;
-  let dy = Math.max(fimL, fimR) + (tall ? 34 : 22) * s;
-  const limite = fy - (tall ? 150 : 120) * s;
-  if (dy < limite) dy = limite;
+  /* ---------- fechamento editorial ---------- */
+  const fimListas = Math.max(fimL, fimR);
+  const album = (data.topAlbums || [])[0];
+  const blocoH = tall ? 116 * s : 94 * s;
+  const resumoY = H - (tall ? 42 : 34) * s;
+  const maxBlocoY = resumoY - blocoH - (tall ? 44 : 34) * s;
+  const blocoY = Math.min(maxBlocoY, fimListas + (tall ? 30 : 22) * s);
 
-  ctx.fillStyle = RULE;
-  ctx.fillRect(pad, dy - (tall ? 52 : 42) * s, W - pad * 2, 2 * s);
-
-  if (st.p.recap && st.temTempo) {
-    /* recap fecha com dois números, não um */
-    const meia = (W - pad * 2) / 2;
-    [
-      ["TEMPO OUVINDO", st.tempoLongo],
-      ["ARTISTAS DIFERENTES", st.unique],
-    ].forEach(([rot, val], i) => {
-      const x = pad + meia * i;
-      ctx.fillStyle = CLARO;
-      ctx.font = `700 ${(tall ? 26 : 22) * s}px Archivo`;
-      ctx.fillText(rot, x, dy);
-      ctx.fillStyle = accent;
-      writeFit(ctx, val, x, dy + (tall ? 68 : 56) * s, meia - 20 * s, (tall ? 62 : 50) * s, 26 * s, "Anton");
-    });
-  } else {
-    ctx.fillStyle = CLARO;
-    ctx.font = `700 ${(tall ? 30 : 25) * s}px Archivo`;
-    ctx.fillText(st.temTempo ? "TEMPO OUVINDO" : "ÁLBUM DO PERÍODO", pad, dy);
-
-    dy += (tall ? 74 : 60) * s;
+  if (album && blocoY > fimListas - 2 * s) {
+    ctx.fillStyle = RULE;
+    ctx.fillRect(pad, blocoY - 18 * s, W - pad * 2, 2 * s);
+    ctx.fillStyle = "#17171A";
+    ctx.fillRect(pad, blocoY, W - pad * 2, blocoH);
     ctx.fillStyle = accent;
-    if (st.temTempo) {
-      writeFit(ctx, st.tempoLongo, pad, dy, W - pad * 2, (tall ? 64 : 54) * s, 28 * s, "Anton");
-    } else if (capa) {
-      writeFit(ctx, capa.name.toUpperCase(), pad, dy, W - pad * 2, (tall ? 66 : 54) * s, 28 * s, "Anton");
-    }
+    ctx.font = `700 ${(tall ? 18 : 16) * s}px Archivo`;
+    ctx.fillText(data.period === "ano" ? "ÁLBUM DO ANO" : data.period === "mes" ? "ÁLBUM DO MÊS" : "ÁLBUM MAIS OUVIDO", pad + 24 * s, blocoY + 34 * s);
+    ctx.fillStyle = CLARO;
+    writeFit(ctx, album.name.toUpperCase(), pad + 24 * s, blocoY + (tall ? 80 : 68) * s, W * 0.57, (tall ? 36 : 31) * s, 20 * s, "Anton");
+    ctx.textAlign = "right";
+    ctx.fillStyle = MEIO;
+    ctx.font = `600 ${(tall ? 19 : 17) * s}px Archivo`;
+    ctx.fillText(truncate(ctx, album.artist || "", W * 0.27), W - pad - 24 * s, blocoY + (tall ? 78 : 67) * s);
+    ctx.textAlign = "left";
   }
 
-  /* ---------- rodapé ---------- */
   ctx.fillStyle = MEIO;
-  tracking(ctx, 2 * s);
-  ctx.font = `600 ${21 * s}px Archivo`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, (W - pad * 2) * 0.6), pad, fy);
-  const marca = st.p.recap ? `RECAP ${st.range}` : st.p.poster;
-  ctx.fillText(marca, W - pad - ctx.measureText(marca).width, fy);
-  tracking(ctx, 0);
+  ctx.font = `600 ${(tall ? 18 : 16) * s}px Archivo`;
+  const resumo = `${st.tempo.toUpperCase()} OUVINDO · ${st.unique} ARTISTAS`;
+  ctx.fillText(resumo, pad, resumoY);
 
   grain(ctx, W, H, 0.04, Math.round(W * H * 0.00024));
 }
@@ -722,140 +840,153 @@ function drawVidro(ctx, W, H, data) {
   const s = W / 1080;
   const st = strings(data);
   const tall = H >= W * 1.6;
+  const square = H <= W * 1.05;
   const recap = st.p.recap;
+  const pad = (tall ? 64 : 54) * s;
+  const F = "Inter, sans-serif";
 
-  ctx.fillStyle = "#0B0B0F";
+  ctx.fillStyle = "#090A0F";
   ctx.fillRect(0, 0, W, H);
 
-  const warm = [
-    { x: W * 0.2, y: H * 0.16, r: W * 0.75, c: "#FF3B6B" },
-    { x: W * 0.9, y: H * 0.3, r: W * 0.8, c: "#7B2BFF" },
-    { x: W * 0.15, y: H * 0.7, r: W * 0.85, c: "#0A84FF" },
-    { x: W * 0.85, y: H * 0.92, r: W * 0.6, c: "#FF9F0A" },
-  ];
-  const gold = [
-    { x: W * 0.25, y: H * 0.14, r: W * 0.8, c: "#FFC531" },
-    { x: W * 0.9, y: H * 0.36, r: W * 0.75, c: "#FF6A00" },
-    { x: W * 0.1, y: H * 0.74, r: W * 0.85, c: "#C21E56" },
-    { x: W * 0.8, y: H * 0.94, r: W * 0.6, c: "#5B2BFF" },
-  ];
-  (recap ? gold : warm).forEach((b) => {
-    const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
-    g.addColorStop(0, b.c);
-    g.addColorStop(1, "rgba(11,11,15,0)");
-    ctx.globalAlpha = 0.55;
+  const blobs = recap
+    ? [
+        [W * 0.12, H * 0.18, W * 0.82, "#FFC531"],
+        [W * 0.92, H * 0.38, W * 0.78, "#FF6A00"],
+        [W * 0.08, H * 0.72, W * 0.86, "#B71F62"],
+        [W * 0.85, H * 0.94, W * 0.66, "#5B2BFF"],
+      ]
+    : [
+        [W * 0.14, H * 0.18, W * 0.82, "#FF3B6B"],
+        [W * 0.92, H * 0.34, W * 0.80, "#7B2BFF"],
+        [W * 0.08, H * 0.72, W * 0.88, "#0A84FF"],
+        [W * 0.86, H * 0.94, W * 0.68, "#FF9F0A"],
+      ];
+  blobs.forEach(([x, y, r, c]) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, c);
+    g.addColorStop(1, "rgba(9,10,15,0)");
+    ctx.globalAlpha = 0.62;
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   });
   ctx.globalAlpha = 1;
 
   const veil = ctx.createLinearGradient(0, 0, 0, H);
-  veil.addColorStop(0, "rgba(0,0,0,0.5)");
-  veil.addColorStop(0.45, "rgba(0,0,0,0.28)");
-  veil.addColorStop(1, "rgba(0,0,0,0.7)");
+  veil.addColorStop(0, "rgba(0,0,0,.38)");
+  veil.addColorStop(0.42, "rgba(0,0,0,.18)");
+  veil.addColorStop(1, "rgba(0,0,0,.62)");
   ctx.fillStyle = veil;
   ctx.fillRect(0, 0, W, H);
 
-  const pad = 88 * s;
-  const F = "Inter, sans-serif";
+  const bandaH = tall ? H * 0.225 : H * 0.20;
+  const banda = bandaTopo(ctx, W, H, data, bandaH, "rgba(9,10,15,1)");
+  const topY = banda ? banda + (tall ? 38 : 30) * s : 80 * s;
 
-  /* banda de capa no topo, dissolvendo no gradiente */
-  const banda = bandaTopo(ctx, W, H, data, (tall ? 0.28 : 0.24) * H, "rgba(11,11,15,1)");
-
-  let topo = banda ? banda + (tall ? 56 : 44) * s : 130 * s;
-
-  ctx.fillStyle = "rgba(255,255,255,0.62)";
-  ctx.font = `600 ${25 * s}px ${F}`;
+  ctx.fillStyle = "rgba(255,255,255,.72)";
+  ctx.font = `600 ${(tall ? 26 : 22) * s}px ${F}`;
   const abertura = data.period === "ano" ? `Arquivo ${st.range}` : data.period === "mes" ? "Mapa do mês" : "Recorte da semana";
-  ctx.fillText(abertura, pad, topo);
+  ctx.fillText(abertura, pad, topY);
 
+  const numY = topY + (tall ? 152 : 122) * s;
   ctx.fillStyle = "#FFFFFF";
-  const numSize = fitText(ctx, st.count, W - pad * 2, tall ? 210 * s : 170 * s, F, "700");
+  const numSize = fitText(ctx, st.count, W * 0.50, tall ? 162 * s : 126 * s, F, "700");
   ctx.font = `700 ${numSize}px ${F}`;
-  const numY = topo + (tall ? 180 : 140) * s;
   ctx.fillText(st.count, pad, numY);
 
-  ctx.fillStyle = "rgba(255,255,255,0.72)";
-  ctx.font = `400 ${34 * s}px ${F}`;
-  ctx.fillText("scrobbles registrados", pad, numY + 50 * s);
-  if (st.deltaTxt) {
-    ctx.fillStyle = "rgba(255,255,255,0.55)";
-    ctx.font = `400 ${26 * s}px ${F}`;
-    ctx.fillText(st.deltaTxt, pad, numY + 90 * s);
-  }
-  if (st.temTempo) {
-    ctx.fillStyle = "rgba(255,255,255,0.72)";
-    ctx.font = `500 ${30 * s}px ${F}`;
-    ctx.fillText(`≈ ${st.tempoLongo} de música`, pad, numY + (st.deltaTxt ? 142 : 98) * s);
-  }
+  ctx.fillStyle = "rgba(255,255,255,.82)";
+  ctx.font = `500 ${(tall ? 33 : 27) * s}px ${F}`;
+  ctx.fillText("reproduções registradas", pad, numY + (tall ? 48 : 40) * s);
+  ctx.fillStyle = "rgba(255,255,255,.66)";
+  ctx.font = `500 ${(tall ? 27 : 22) * s}px ${F}`;
+  const apoio = st.temTempo ? `${st.tempoLongo} de música${st.deltaTxt ? ` · ${st.deltaTxt}` : ""}` : st.deltaTxt;
+  if (apoio) ctx.fillText(apoio, pad, numY + (tall ? 92 : 76) * s);
 
-  const cardTop = numY + (tall ? 140 : 120) * s;
-  const cardBottom = H - (tall ? 250 : 170) * s;
+  const cardTop = numY + (tall ? 132 : 108) * s;
+  const cardBottom = H - (tall ? 38 : 30) * s;
+  const cardH = Math.max(300 * s, cardBottom - cardTop);
   ctx.save();
-  roundRect(ctx, pad, cardTop, W - pad * 2, cardBottom - cardTop, 18 * s);
-  ctx.fillStyle = "rgba(255,255,255,0.13)";
+  roundRect(ctx, pad, cardTop, W - pad * 2, cardH, 28 * s);
+  ctx.fillStyle = "rgba(255,255,255,.145)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.strokeStyle = "rgba(255,255,255,.28)";
   ctx.lineWidth = 2 * s;
   ctx.stroke();
   ctx.restore();
   ctx.fillStyle = recap ? GOLD : PINK;
-  ctx.fillRect(pad, cardTop, 12 * s, cardBottom - cardTop);
+  ctx.fillRect(pad, cardTop, 12 * s, cardH);
 
-  const cpad = pad + 52 * s;
-  const gap = 36 * s;
-  const colW = (W - cpad * 2 - gap) / 2;
-  const rowH = tall ? 88 * s : 74 * s;
-  const cy = cardTop + (tall ? 60 : 52) * s;
+  const inner = pad + (tall ? 54 : 44) * s;
+  const gap = (tall ? 40 : 30) * s;
+  const colW = (W - inner * 2 - gap) / 2;
+  const titleY = cardTop + (tall ? 64 : 52) * s;
+  const maxItens = square ? 3 : 5;
+  const artists = st.artists.slice(0, maxItens);
+  const tracks = st.tracks.slice(0, maxItens);
+  const maxRows = Math.max(artists.length, tracks.length, 1);
+  const albumReserve = st.album ? (tall ? 178 : 138) * s : 0;
+  const metricsReserve = (tall ? 118 : 96) * s;
+  const rowAreaTop = titleY + (tall ? 58 : 48) * s;
+  const rowAreaBottom = cardBottom - albumReserve - metricsReserve - (tall ? 32 : 24) * s;
+  const rowH = Math.max((tall ? 72 : 58) * s, Math.min((tall ? 94 : 74) * s, (rowAreaBottom - rowAreaTop) / maxRows));
 
   const column = (x, title, items, get, meta) => {
-    ctx.fillStyle = "rgba(255,255,255,0.58)";
-    ctx.font = `500 ${23 * s}px ${F}`;
-    ctx.fillText(title, x, cy);
-    let y = cy + (tall ? 62 : 52) * s;
+    ctx.fillStyle = "rgba(255,255,255,.64)";
+    ctx.font = `700 ${(tall ? 24 : 20) * s}px ${F}`;
+    ctx.fillText(title, x, titleY);
+    let y = rowAreaTop;
     items.forEach((it, i) => {
-      ctx.fillStyle = "rgba(255,255,255,0.4)";
-      ctx.font = `500 ${24 * s}px ${F}`;
-      ctx.fillText(`${i + 1}`, x, y);
+      ctx.fillStyle = i === 0 ? (recap ? GOLD : PINK) : "rgba(255,255,255,.46)";
+      ctx.font = `700 ${(tall ? 23 : 19) * s}px ${F}`;
+      ctx.fillText(String(i + 1), x, y);
       ctx.fillStyle = "#FFFFFF";
-      writeFit(ctx, get(it), x + 32 * s, y, colW - 32 * s, (tall ? 30 : 26) * s, 18 * s, F, i === 0 ? "600" : "500");
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.font = `400 ${(tall ? 20 : 18) * s}px ${F}`;
-      ctx.fillText(truncate(ctx, meta(it), colW - 32 * s), x + 32 * s, y + (tall ? 30 : 26) * s);
+      writeFit(ctx, get(it), x + 34 * s, y, colW - 34 * s, (tall ? 31 : 25) * s, 17 * s, F, i === 0 ? "700" : "600");
+      ctx.fillStyle = "rgba(255,255,255,.58)";
+      writeFit(ctx, meta(it), x + 34 * s, y + (tall ? 30 : 25) * s, colW - 34 * s, (tall ? 20 : 17) * s, 13 * s, F, "500");
       y += rowH;
     });
-    return y;
   };
 
-  const endL = column(cpad, "ARTISTAS", st.artists, (a) => a.name, st.metaArtista);
-  const endR = column(cpad + colW + gap, "MÚSICAS", st.tracks, (t) => t.name, st.metaFaixa);
-  let y = Math.max(endL, endR) + (tall ? 22 : 14) * s;
+  column(inner, "ARTISTAS", artists, (a) => a.name, st.metaArtista);
+  column(inner + colW + gap, "MÚSICAS", tracks, (t) => t.name, st.metaFaixa);
 
+  let albumY = cardBottom - metricsReserve - albumReserve;
   if (st.album) {
-    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.strokeStyle = "rgba(255,255,255,.22)";
     ctx.lineWidth = 2 * s;
     ctx.beginPath();
-    ctx.moveTo(cpad, y);
-    ctx.lineTo(W - cpad, y);
+    ctx.moveTo(inner, albumY);
+    ctx.lineTo(W - inner, albumY);
     ctx.stroke();
-
-    y += (tall ? 52 : 44) * s;
-    ctx.fillStyle = "rgba(255,255,255,0.58)";
-    ctx.font = `500 ${23 * s}px ${F}`;
-    ctx.fillText("ÁLBUM", cpad, y);
-    y += (tall ? 48 : 42) * s;
+    albumY += (tall ? 30 : 24) * s;
+    const cover = tall ? 104 * s : 82 * s;
+    imagemRecortada(ctx, st.album.capa, inner, albumY, cover, cover, 10 * s, st.album.name, true, "rgba(255,255,255,.2)");
+    const tx = inner + cover + 24 * s;
+    ctx.fillStyle = "rgba(255,255,255,.58)";
+    ctx.font = `700 ${(tall ? 19 : 16) * s}px ${F}`;
+    ctx.fillText(data.period === "ano" ? "ÁLBUM DO ANO" : data.period === "mes" ? "ÁLBUM DO MÊS" : "ÁLBUM MAIS OUVIDO", tx, albumY + 24 * s);
     ctx.fillStyle = "#FFFFFF";
-    writeFit(ctx, st.album.name, cpad, y, W - cpad * 2, (tall ? 38 : 32) * s, 22 * s, F, "600");
-    y += (tall ? 40 : 34) * s;
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.font = `400 ${27 * s}px ${F}`;
-    ctx.fillText(truncate(ctx, st.album.artist, W - cpad * 2), cpad, y);
+    writeFit(ctx, st.album.name, tx, albumY + (tall ? 62 : 50) * s, W - inner - tx, (tall ? 34 : 27) * s, 19 * s, F, "700");
+    ctx.fillStyle = "rgba(255,255,255,.62)";
+    ctx.font = `500 ${(tall ? 21 : 17) * s}px ${F}`;
+    ctx.fillText(truncate(ctx, st.album.artist || "", W - inner - tx), tx, albumY + (tall ? 91 : 74) * s);
   }
 
-  ctx.fillStyle = "rgba(255,255,255,0.5)";
-  ctx.font = `400 ${26 * s}px ${F}`;
-  if (st.handle) ctx.fillText(st.handle, pad, H - 66 * s);
-  ctx.fillText(st.range, W - pad - ctx.measureText(st.range).width, H - 66 * s);
+  const metricsY = cardBottom - metricsReserve + (tall ? 32 : 26) * s;
+  ctx.strokeStyle = "rgba(255,255,255,.22)";
+  ctx.beginPath();
+  ctx.moveTo(inner, metricsY - 22 * s);
+  ctx.lineTo(W - inner, metricsY - 22 * s);
+  ctx.stroke();
+  const metrics = [["REPRODUÇÕES", st.count], ["TEMPO", st.tempo.toUpperCase()], ["ARTISTAS", st.unique]];
+  const mw = (W - inner * 2) / metrics.length;
+  metrics.forEach(([label, value], i) => {
+    const x = inner + mw * i;
+    ctx.fillStyle = "rgba(255,255,255,.54)";
+    ctx.font = `700 ${(tall ? 16 : 14) * s}px ${F}`;
+    ctx.fillText(label, x, metricsY);
+    ctx.fillStyle = "#FFFFFF";
+    writeFit(ctx, value, x, metricsY + (tall ? 42 : 35) * s, mw - 18 * s, (tall ? 32 : 26) * s, 18 * s, F, "700");
+  });
 }
 
 /* ============================================================
@@ -918,7 +1049,7 @@ function drawLambe(ctx, W, H, data) {
   ctx.fillText(st.count, pad, y);
   y += 66 * s;
   ctx.font = `${54 * s}px Anton`;
-  ctx.fillText("SCROBBLES", pad, y);
+  ctx.fillText("REPRODUÇÕES", pad, y);
 
   if (st.deltaTxt) {
     y += 74 * s;
@@ -982,10 +1113,6 @@ function drawLambe(ctx, W, H, data) {
     );
   }
 
-  ctx.fillStyle = INK;
-  ctx.font = `700 ${25 * s}px 'Space Grotesk'`;
-  ctx.fillText(st.handle.toUpperCase(), pad, H - hz - 44 * s);
-  ctx.fillText(st.range, W - pad - ctx.measureText(st.range).width, H - hz - 44 * s);
 }
 
 /* ============================================================
@@ -1030,33 +1157,30 @@ function drawXerox(ctx, W, H, data) {
   dots(ctx, 0, banda, W, H * 0.2, "rgba(239,234,225,0.12)", 26 * s, 4 * s);
   dots(ctx, 0, H * 0.76, W, H * 0.24, st.p.recap ? "rgba(245,197,24,0.18)" : "rgba(255,74,28,0.2)", 26 * s, 4 * s);
 
-  let y = banda ? banda + 78 * s : 140 * s;
+  const headerY = banda ? banda + 58 * s : 116 * s;
   ctx.fillStyle = PAPER;
-  ctx.font = `700 ${30 * s}px 'Space Grotesk'`;
-  ctx.fillText(st.p.recap ? `FAIXA ///// RECAP ${st.range}` : `FAIXA ///// ${st.p.poster}`, pad, y);
+  ctx.font = `700 ${27 * s}px 'Space Grotesk'`;
+  ctx.fillText(st.p.recap ? `FAIXA ///// RECAP ${st.range}` : `FAIXA ///// ${st.p.poster}`, pad, headerY);
 
-  y += banda ? (tall ? 150 : 128) * s : (tall ? 250 : 210) * s;
-  const nS = fitText(ctx, st.count, W - pad * 2, (tall ? (banda ? 210 : 280) : 205) * s, "Anton");
+  const nS = fitText(ctx, st.count, W * 0.54, (tall ? 188 : 166) * s, "Anton");
+  const numberTop = headerY + 38 * s;
+  let y = numberTop + nS * 0.82;
   ctx.font = `${nS}px Anton`;
   ctx.fillStyle = PAPER;
   ctx.fillText(st.count, pad, y);
-  y += 72 * s;
+  y += (tall ? 58 : 48) * s;
   ctx.fillStyle = accent;
-  ctx.font = `${54 * s}px Anton`;
-  ctx.fillText(
-    data.period === "ano" ? "SCROBBLES NO ANO" : data.period === "mes" ? "SCROBBLES NO MÊS" : "SCROBBLES NA SEMANA",
-    pad,
-    y
-  );
+  const rotuloRepro = data.period === "ano" ? "REPRODUÇÕES NO ANO" : data.period === "mes" ? "REPRODUÇÕES NO MÊS" : "REPRODUÇÕES NA SEMANA";
+  writeFit(ctx, rotuloRepro, pad, y, W - pad * 2, (tall ? 47 : 40) * s, 25 * s, "Anton");
 
   if (st.deltaTxt) {
-    y += 66 * s;
+    y += 50 * s;
     ctx.fillStyle = PAPER;
-    ctx.font = `700 ${28 * s}px 'Space Grotesk'`;
+    ctx.font = `700 ${24 * s}px 'Space Grotesk'`;
     ctx.fillText(st.deltaTxt.toUpperCase(), pad, y);
   }
 
-  y += (tall ? 90 : 70) * s;
+  y += (tall ? 64 : 54) * s;
   ctx.strokeStyle = PAPER;
   ctx.lineWidth = 4 * s;
   ctx.setLineDash([24 * s, 16 * s]);
@@ -1067,7 +1191,7 @@ function drawXerox(ctx, W, H, data) {
   ctx.setLineDash([]);
 
   const colTop = y + (tall ? 74 : 60) * s;
-  const rowH = tall ? 91 * s : 78 * s;
+  const rowH = tall ? 84 * s : 74 * s;
 
   const column = (x, title, items, get, meta) => {
     ctx.fillStyle = "rgba(243,237,226,0.6)";
@@ -1092,7 +1216,7 @@ function drawXerox(ctx, W, H, data) {
   const endR = column(pad + colW + gap, "MÚSICAS", st.tracks, (t) => t.name, st.metaFaixa);
   y = Math.max(endL, endR) + (tall ? 20 : 10) * s;
 
-  if (st.album) {
+  if (st.album && y < H - (tall ? 150 : 122) * s) {
     ctx.strokeStyle = PAPER;
     ctx.lineWidth = 4 * s;
     ctx.setLineDash([24 * s, 16 * s]);
@@ -1115,11 +1239,9 @@ function drawXerox(ctx, W, H, data) {
     ctx.fillText(truncate(ctx, st.album.artist, W - pad * 2), pad, y);
   }
 
-  ctx.fillStyle = accent;
-  ctx.font = `700 ${25 * s}px 'Space Grotesk'`;
-  ctx.fillText(st.handle.toUpperCase(), pad, H - 62 * s);
-  ctx.fillStyle = PAPER;
-  ctx.fillText(st.range, W - pad - ctx.measureText(st.range).width, H - 62 * s);
+  ctx.fillStyle = "rgba(243,237,226,0.64)";
+  ctx.font = `600 ${17 * s}px 'Space Grotesk'`;
+  ctx.fillText(`${st.tempo.toUpperCase()} OUVINDO · ${st.unique} ARTISTAS`, pad, H - 32 * s);
 }
 
 
@@ -1298,227 +1420,176 @@ function poeira(ctx, x, y, w, h, s) {
   ctx.restore();
 }
 
+
 function drawCupom(ctx, W, H, data) {
   const s = W / 1080;
   const st = strings(data);
   const tall = H >= W * 1.6;
   const M = "'Courier Prime', 'Courier New', monospace";
+  const hero = (data.topArtists || [])[0] || {};
 
-  /* superfície atrás do papel */
-  ctx.fillStyle = "#1A1714";
+  ctx.fillStyle = "#141210";
   ctx.fillRect(0, 0, W, H);
-  const vig = ctx.createRadialGradient(W / 2, H * 0.42, 0, W / 2, H * 0.42, W * 1.05);
-  vig.addColorStop(0, "rgba(255,255,255,0.10)");
-  vig.addColorStop(1, "rgba(0,0,0,0.55)");
-  ctx.fillStyle = vig;
+  const halo = ctx.createRadialGradient(W * 0.46, H * 0.38, 0, W * 0.46, H * 0.38, W * 0.95);
+  halo.addColorStop(0, "rgba(255,255,255,.10)");
+  halo.addColorStop(1, "rgba(0,0,0,.58)");
+  ctx.fillStyle = halo;
   ctx.fillRect(0, 0, W, H);
 
-  /* geometria do papel */
-  const px = 92 * s;
+  const px = 96 * s;
+  const py = tall ? 86 * s : 64 * s;
   const pw = W - px * 2;
-  const py = tall ? 104 * s : 62 * s;
   const ph = H - py * 2;
-  const dente = 24 * s;
 
-  /* sombra projetada com o formato serrilhado */
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.6)";
-  ctx.shadowBlur = 48 * s;
-  ctx.shadowOffsetY = 20 * s;
-  ctx.fillStyle = "#F6F3EE";
-  contornoPapel(ctx, px, py, pw, ph, dente);
-  ctx.fill();
-  ctx.restore();
-
-  /* textura recortada no formato do papel */
-  ctx.save();
-  contornoPapel(ctx, px, py, pw, ph, dente);
-  ctx.clip();
-  if (papelImg) {
-    cobrir(ctx, papelImg, px, py - dente, pw, ph + dente * 2);
-  }
-  poeira(ctx, px, py, pw, ph, s);
-  /* leve escurecimento nas bordas, dá volume ao papel */
-  const bordas = ctx.createLinearGradient(px, 0, px + pw, 0);
-  bordas.addColorStop(0, "rgba(120,110,100,0.16)");
-  bordas.addColorStop(0.12, "rgba(0,0,0,0)");
-  bordas.addColorStop(0.88, "rgba(0,0,0,0)");
-  bordas.addColorStop(1, "rgba(120,110,100,0.16)");
-  ctx.fillStyle = bordas;
+  ctx.shadowColor = "rgba(0,0,0,.48)";
+  ctx.shadowBlur = 42 * s;
+  ctx.shadowOffsetY = 18 * s;
+  ctx.fillStyle = "#F4F1EB";
   ctx.fillRect(px, py, pw, ph);
   ctx.restore();
 
-  /* ---------- conteúdo ---------- */
-  const pad = px + 52 * s;
-  const inner = pw - 104 * s;
-  const meio = px + pw / 2;
-  const tinta = "#171310";
-  let y = py + (tall ? 112 : 92) * s;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(px, py, pw, ph);
+  ctx.clip();
+  if (papelImg) cobrir(ctx, papelImg, px, py, pw, ph);
+  else {
+    ctx.fillStyle = "#F4F1EB";
+    ctx.fillRect(px, py, pw, ph);
+  }
+  poeira(ctx, px, py, pw, ph, s);
+  const vinheta = ctx.createRadialGradient(px + pw / 2, py + ph / 2, 0, px + pw / 2, py + ph / 2, pw * 0.75);
+  vinheta.addColorStop(0, "rgba(255,255,255,0)");
+  vinheta.addColorStop(1, "rgba(0,0,0,.06)");
+  ctx.fillStyle = vinheta;
+  ctx.fillRect(px, py, pw, ph);
+  ctx.restore();
 
-  const tracejada = () => {
-    ctx.strokeStyle = "rgba(23,19,16,0.5)";
+  const pad = px + 46 * s;
+  const inner = pw - 92 * s;
+  const right = pad + inner;
+  const tinta = "#12100E";
+  const fraco = "rgba(18,16,14,.66)";
+  let y = py + 72 * s;
+
+  ctx.fillStyle = tinta;
+  ctx.textAlign = "center";
+  ctx.font = `700 ${(tall ? 84 : 68) * s}px Archivo`;
+  ctx.fillText(st.p.recap ? "RECAP" : st.p.poster, px + pw / 2, y);
+  y += (tall ? 34 : 28) * s;
+  ctx.font = `600 ${(tall ? 22 : 19) * s}px Archivo`;
+  ctx.fillText((hero.name || st.handle || "FAIXA").toUpperCase(), px + pw / 2, y);
+  ctx.textAlign = "left";
+
+  y += (tall ? 56 : 46) * s;
+  ctx.font = `400 ${(tall ? 17 : 15) * s}px ${M}`;
+  ctx.fillStyle = tinta;
+  ctx.fillText(`ORDER #${String(data.count || 0).padStart(4, "0")} FOR LAST.FM`, pad, y);
+  y += (tall ? 30 : 26) * s;
+  ctx.fillText(st.range.toUpperCase(), pad, y);
+
+  const regra = () => {
+    ctx.strokeStyle = "rgba(18,16,14,.45)";
     ctx.lineWidth = 2 * s;
-    ctx.setLineDash([9 * s, 9 * s]);
+    ctx.setLineDash([8 * s, 8 * s]);
     ctx.beginPath();
     ctx.moveTo(pad, y);
-    ctx.lineTo(pad + inner, y);
+    ctx.lineTo(right, y);
     ctx.stroke();
     ctx.setLineDash([]);
   };
 
-  ctx.textAlign = "center";
-  ctx.fillStyle = tinta;
-  ctx.font = `700 ${(tall ? 88 : 70) * s}px Archivo`;
-  ctx.fillText(st.p.recap ? "RECAP" : st.p.poster, meio, y);
-
-  y += (tall ? 40 : 34) * s;
-  tracking(ctx, 5 * s);
-  ctx.font = `400 ${25 * s}px ${M}`;
-  ctx.fillText(st.handle ? st.handle.toUpperCase() : "FAIXA", meio, y);
-  tracking(ctx, 0);
-
-  y += (tall ? 52 : 44) * s;
-  ctx.textAlign = "left";
-  ctx.font = `400 ${22 * s}px ${M}`;
-  ctx.fillText("FAIXA #" + String(data.count || 0).padStart(4, "0") + " - LAST.FM", pad, y);
-  y += 30 * s;
-  ctx.fillText(st.range.toUpperCase(), pad, y);
-
-  y += (tall ? 34 : 28) * s;
-  tracejada();
-
-  /* cabeçalho de colunas, como num cupom de verdade */
-  y += (tall ? 40 : 34) * s;
-  ctx.font = `400 ${22 * s}px ${M}`;
-  ctx.fillStyle = "rgba(23,19,16,0.7)";
-  ctx.fillText("QTD  ITEM", pad, y);
-  ctx.fillText("TEMPO", pad + inner - ctx.measureText("TEMPO").width, y);
-  ctx.fillStyle = tinta;
+  y += (tall ? 28 : 24) * s;
+  regra();
+  y += (tall ? 36 : 30) * s;
+  ctx.fillStyle = fraco;
+  ctx.font = `400 ${(tall ? 17 : 15) * s}px ${M}`;
+  ctx.fillText("QTY   ITEM", pad, y);
+  const amt = "AMT";
+  ctx.fillText(amt, right - ctx.measureText(amt).width, y);
   y += (tall ? 12 : 10) * s;
-  tracejada();
+  regra();
 
-  /* seção de itens: nome, contagem à direita, apoio embaixo */
-  const secao = (titulo, itens, nome, apoio, tempoDe) => {
-    y += (tall ? 46 : 38) * s;
+  const drawRow = (qtd, name, amtText, sub = "") => {
+    y += (tall ? 32 : 28) * s;
     ctx.fillStyle = tinta;
-    ctx.font = `700 ${24 * s}px ${M}`;
-    ctx.fillText(titulo, pad, y);
-    y += (tall ? 42 : 36) * s;
-
-    itens.forEach((it) => {
-      const qtd = String(it.playcount).padStart(2, "0");
-      const tempo = tempoDe(it);
-      ctx.font = `400 ${(tall ? 26 : 22) * s}px ${M}`;
-      const wt = ctx.measureText(tempo).width;
-      const wq = ctx.measureText(qtd + "  ").width;
-      ctx.fillStyle = tinta;
-      ctx.fillText(qtd, pad, y);
-      ctx.fillText(tempo, pad + inner - wt, y);
-      writeFit(ctx, nome(it), pad + wq, y, inner - wq - wt - 22 * s, (tall ? 26 : 22) * s, 15 * s, M, "400");
-
-      const ap = apoio(it);
-      if (ap) {
-        y += (tall ? 27 : 23) * s;
-        ctx.fillStyle = "rgba(23,19,16,0.55)";
-        ctx.font = `400 ${(tall ? 19 : 17) * s}px ${M}`;
-        ctx.fillText(truncate(ctx, "   " + ap, inner - wt), pad + wq, y);
-      }
-      y += (tall ? 36 : 30) * s;
-    });
-    y -= (tall ? 10 : 8) * s;
-    tracejada();
+    ctx.font = `400 ${(tall ? 18 : 16) * s}px ${M}`;
+    const q = String(qtd).padStart(2, "0");
+    const amtW = ctx.measureText(amtText).width;
+    ctx.fillText(q, pad, y);
+    ctx.fillText(amtText, right - amtW, y);
+    writeFit(ctx, name.toUpperCase(), pad + 60 * s, y, inner - 60 * s - amtW - 16 * s, (tall ? 18 : 16) * s, 12 * s, M, "400");
+    if (sub) {
+      y += (tall ? 22 : 19) * s;
+      ctx.fillStyle = fraco;
+      ctx.font = `400 ${(tall ? 14 : 13) * s}px ${M}`;
+      writeFit(ctx, sub.toUpperCase(), pad + 60 * s, y, inner - 60 * s, (tall ? 14 : 13) * s, 11 * s, M, "400");
+    }
   };
 
-  const min = (it, dur) => formatTempo((it.playcount || 0) * dur, true).toUpperCase();
-  const mediaDur = data.mediaDur || 210;
+  const tracks = (data.topTracks || []).slice(0, tall ? 7 : 6);
+  tracks.forEach((t) => {
+    const dur = formatTempo((t.playcount || 0) * (t.duration > 0 ? t.duration : (data.mediaDur || 210)), true).toUpperCase();
+    drawRow(t.playcount || 0, t.name || "—", dur, t.artist || "");
+  });
 
-  secao("ARTISTAS", st.artists, (a) => a.name, () => "", (a) => min(a, mediaDur));
-  secao(
-    "MUSICAS",
-    st.tracks,
-    (t) => t.name,
-    (t) => (t.artist || "").toUpperCase(),
-    (t) => min(t, t.duration > 0 ? t.duration : mediaDur)
-  );
-
-  if (st.album) {
-    y += (tall ? 46 : 38) * s;
-    ctx.fillStyle = tinta;
-    ctx.font = `700 ${25 * s}px ${M}`;
-    ctx.fillText("ALBUM", pad, y);
-    y += (tall ? 38 : 32) * s;
-    ctx.font = `400 ${(tall ? 27 : 23) * s}px ${M}`;
-    writeFit(ctx, st.album.name, pad, y, inner, (tall ? 27 : 23) * s, 16 * s, M, "400");
-    y += (tall ? 28 : 24) * s;
-    ctx.fillStyle = "rgba(23,19,16,0.55)";
-    ctx.font = `400 ${(tall ? 20 : 18) * s}px ${M}`;
-    ctx.fillText(truncate(ctx, st.album.artist.toUpperCase(), inner), pad, y);
-    y += (tall ? 24 : 20) * s;
-    tracejada();
-  }
-
-  /* total */
-  y += (tall ? 58 : 48) * s;
+  y += (tall ? 24 : 20) * s;
+  regra();
+  y += (tall ? 36 : 30) * s;
   ctx.fillStyle = tinta;
-  ctx.font = `700 ${(tall ? 33 : 28) * s}px ${M}`;
-  ctx.fillText("TOTAL", pad, y);
-  ctx.font = `700 ${(tall ? 44 : 36) * s}px ${M}`;
-  ctx.fillText(st.count, pad + inner - ctx.measureText(st.count).width, y);
+  ctx.font = `700 ${(tall ? 18 : 16) * s}px ${M}`;
+  ctx.fillText("ARTISTAS", pad, y);
+  y += (tall ? 18 : 16) * s;
 
-  y += (tall ? 34 : 29) * s;
-  ctx.font = `400 ${22 * s}px ${M}`;
-  ctx.fillStyle = "rgba(23,19,16,0.65)";
-  ctx.fillText("SCROBBLES", pad, y);
-  if (st.deltaTxt) {
-    const d = st.deltaTxt.toUpperCase().replace("·", "-");
-    ctx.fillText(d, pad + inner - ctx.measureText(d).width, y);
-  }
+  (data.topArtists || []).slice(0, 4).forEach((a, i) => {
+    drawRow(a.playcount || 0, a.name || "—", formatTempo((a.playcount || 0) * (data.mediaDur || 210), true).toUpperCase(), i === 0 && st.album ? `TOP ALBUM: ${st.album.name}` : "");
+  });
 
-  if (st.temTempo) {
-    y += (tall ? 40 : 34) * s;
-    ctx.fillStyle = tinta;
-    ctx.font = `700 ${(tall ? 29 : 25) * s}px ${M}`;
-    ctx.fillText("TEMPO TOTAL", pad, y);
-    const tp = st.tempo.toUpperCase();
-    ctx.fillText(tp, pad + inner - ctx.measureText(tp).width, y);
-  }
+  y += (tall ? 24 : 20) * s;
+  regra();
+  y += (tall ? 34 : 28) * s;
+  ctx.fillStyle = tinta;
+  ctx.font = `700 ${(tall ? 18 : 16) * s}px ${M}`;
+  ctx.fillText("ITEM COUNT:", pad, y);
+  const totalTracks = String(tracks.length);
+  ctx.fillText(totalTracks, right - ctx.measureText(totalTracks).width, y);
+  y += (tall ? 28 : 24) * s;
+  ctx.fillText("TOTAL:", pad, y);
+  ctx.font = `700 ${(tall ? 34 : 28) * s}px ${M}`;
+  ctx.fillText(st.count, right - ctx.measureText(st.count).width, y);
 
-  y += (tall ? 30 : 26) * s;
-  tracejada();
-  y += (tall ? 40 : 34) * s;
-  ctx.fillStyle = "rgba(23,19,16,0.7)";
-  ctx.font = `400 ${20 * s}px ${M}`;
-  ctx.fillText(`ARTISTAS DISTINTOS: ${st.unique}`, pad, y);
-  y += 28 * s;
-  ctx.fillText(`COD: ${String((data.count || 0) * 7919 % 999983).padStart(6, "0")}`, pad, y);
+  y += (tall ? 44 : 36) * s;
+  ctx.font = `400 ${(tall ? 17 : 15) * s}px ${M}`;
+  ctx.fillStyle = tinta;
+  ctx.fillText(`CARD #: **** **** **** ${new Date().getFullYear()}`, pad, y);
+  y += (tall ? 26 : 22) * s;
+  ctx.fillText(`AUTH CODE: ${String((data.count || 0) * 123421 % 999999).padStart(6, "0")}`, pad, y);
+  y += (tall ? 26 : 22) * s;
+  ctx.fillText(`CARDHOLDER: ${(hero.name || "FAIXA").toUpperCase()}`, pad, y);
 
-  /* código de barras */
-  y += (tall ? 62 : 50) * s;
-  const hb = (tall ? 84 : 66) * s;
+  y += (tall ? 36 : 28) * s;
+  regra();
+
+  const barcodeY = ph + py - (tall ? 210 : 186) * s;
   let bx = pad;
   let seed = (data.count || 7) * 31 + 17;
   ctx.fillStyle = tinta;
-  while (bx < pad + inner - 4 * s) {
+  while (bx < right - 4 * s) {
     seed = (seed * 9301 + 49297) % 233280;
-    const bw = 2.4 * s + (seed / 233280) * 7 * s;
-    ctx.fillRect(bx, y, bw, hb);
-    bx += bw + (3 + (seed % 5)) * s;
+    const bw = 2.3 * s + (seed / 233280) * 5.5 * s;
+    ctx.fillRect(bx, barcodeY, bw, (tall ? 88 : 72) * s);
+    bx += bw + (2 + (seed % 4)) * s;
   }
-  y += hb + 32 * s;
+
   ctx.textAlign = "center";
-  ctx.font = `400 ${21 * s}px ${M}`;
-  ctx.fillStyle = "rgba(23,19,16,0.7)";
-  ctx.fillText("OBRIGADO PELA PREFERENCIA", meio, y);
-  y += 28 * s;
-  ctx.fillText("VOLTE SEMPRE", meio, y);
+  ctx.fillStyle = fraco;
+  ctx.font = `400 ${(tall ? 15 : 14) * s}px ${M}`;
+  ctx.fillText("OBRIGADO PELA PREFERÊNCIA", px + pw / 2, barcodeY + (tall ? 124 : 104) * s);
+  ctx.fillText("VOLTE SEMPRE", px + pw / 2, barcodeY + (tall ? 150 : 128) * s);
   ctx.textAlign = "left";
 }
 
-
-/* ============================================================
-   LAYOUT 6 — MOSAICO
-   Grade de capas ocupando o topo, listas embaixo.
-   ============================================================ */
 function drawMosaico(ctx, W, H, data) {
   const s = W / 1080;
   const st = strings(data);
@@ -1561,7 +1632,7 @@ function drawMosaico(ctx, W, H, data) {
   ctx.fillStyle = "#FFFFFF";
   ctx.font = `700 ${30 * s}px Archivo`;
   const xMet = pad + measureAnton(ctx, st.count, numSize) + 24 * s;
-  ctx.fillText("SCROBBLES", xMet, y - 8 * s);
+  writeFit(ctx, "REPRODUÇÕES", xMet, y - 8 * s, W - pad - xMet, 28 * s, 18 * s, "Archivo", "700");
   if (st.temTempo) {
     ctx.fillStyle = "#8C8C8C";
     ctx.font = `500 ${26 * s}px Archivo`;
@@ -1572,7 +1643,7 @@ function drawMosaico(ctx, W, H, data) {
   y += (tall ? 74 : 58) * s;
   const gap = 44 * s;
   const colW = (W - pad * 2 - gap) / 2;
-  const rowH = tall ? 76 * s : 62 * s;
+  const rowH = tall ? Math.min(112 * s, Math.max(78 * s, (H - y - 250 * s) / 5)) : 62 * s;
 
   const coluna = (x, titulo, itens, nome, meta) => {
     ctx.fillStyle = "#8C8C8C";
@@ -1599,7 +1670,7 @@ function drawMosaico(ctx, W, H, data) {
 
   if (tall) {
     const album = (data.topAlbums || [])[0];
-    const by = Math.min(H - 210 * s, Math.max(fimA, fimM) + 34 * s);
+    const by = Math.min(H - 150 * s, Math.max(fimA, fimM) + 34 * s);
     ctx.fillStyle = "#17171A";
     ctx.fillRect(pad, by, W - pad * 2, 116 * s);
     ctx.fillStyle = accent;
@@ -1614,13 +1685,6 @@ function drawMosaico(ctx, W, H, data) {
     ctx.textAlign = "left";
   }
 
-  /* rodapé */
-  ctx.fillStyle = "#7B7B84";
-  tracking(ctx, 2 * s);
-  ctx.font = `600 ${22 * s}px Archivo`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.5), pad, H - 54 * s);
-  ctx.fillText(st.range, W - pad - ctx.measureText(st.range).width, H - 54 * s);
-  tracking(ctx, 0);
 
   grain(ctx, W, H, 0.04, Math.round(W * H * 0.00022));
 }
@@ -1637,131 +1701,171 @@ function measureAnton(ctx, txt, size) {
    LAYOUT 7 — CAPA
    Uma capa dominando a composição, no espírito de pôster de disco.
    ============================================================ */
+
 function drawCapa(ctx, W, H, data) {
   const s = W / 1080;
   const st = strings(data);
   const tall = H >= W * 1.6;
+  const square = H <= W * 1.05;
   const accent = st.p.recap ? GOLD : PINK;
-  const alvo = (data.topAlbums || [])[0];
-  const artista = (data.topArtists || [])[0];
-  /* prefere a foto do artista nº1; sem ela, a capa do álbum */
-  const imArtista = capaDe(data.artistImage);
-  const im = imArtista || capaDe(alvo?.capa);
-  const legendaTitulo = imArtista ? (artista?.name || "") : (alvo?.name || "—");
-  const legendaSub = imArtista
-    ? st.metaArtista(artista || { playcount: 0 })
-    : (alvo?.artist || "");
+  const artists = data.topArtists || [];
+  const tracks = data.topTracks || [];
+  const albums = data.topAlbums || [];
+  const artista = artists[0] || {};
+  const album = albums[0] || {};
+  const faixa = tracks[0] || {};
+  const heroUrl = data.artistImage || artista.image || album.capa || faixa.capa || "";
+  const heroImg = capaDe(heroUrl);
+  const titulo = artista.name || album.name || faixa.name || "Sem dados";
+  const subtitulo = artista.name
+    ? `${artista.playcount || 0} reproduções · ${formatTempo((artista.playcount || 0) * (data.mediaDur || 210), true)}`
+    : album.artist || faixa.artist || "";
+  const pad = (tall ? 60 : 48) * s;
+  const footerGap = tall ? 212 * s : 170 * s;
 
-  ctx.fillStyle = "#0B0B0D";
+  ctx.fillStyle = "#09090C";
+  ctx.fillRect(0, 0, W, H);
+  if (heroImg) {
+    ctx.save();
+    ctx.filter = `blur(${62 * s}px) saturate(1.28)`;
+    ctx.globalAlpha = 0.66;
+    cobrir(ctx, heroImg, -W * 0.10, -H * 0.08, W * 1.22, H * 1.16);
+    ctx.restore();
+  }
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "rgba(15,11,14,.24)");
+  bg.addColorStop(0.36, "rgba(8,8,11,.45)");
+  bg.addColorStop(1, "rgba(8,8,11,.92)");
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  /* fundo: a própria imagem desfocada, quando existe */
-  if (im) {
-    ctx.save();
-    ctx.filter = "blur(60px) saturate(1.5)";
-    const esc = Math.max(W / im.width, H / im.height) * 1.3;
-    ctx.drawImage(im, (W - im.width * esc) / 2, (H - im.height * esc) / 2, im.width * esc, im.height * esc);
-    ctx.restore();
-    ctx.fillStyle = "rgba(11,11,13,0.72)";
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  const pad = 84 * s;
-
   ctx.fillStyle = "#FFFFFF";
-  tracking(ctx, 4 * s);
-  ctx.font = `700 ${24 * s}px Archivo`;
-  ctx.fillText(st.p.recap ? `FAIXA — RECAP ${st.range}` : `FAIXA — ${st.p.poster}`, pad, pad + 30 * s);
+  tracking(ctx, 3 * s);
+  ctx.font = `700 ${(tall ? 24 : 20) * s}px Archivo`;
+  ctx.fillText(st.p.recap ? `FAIXA — RECAP ${st.range}` : `FAIXA — ${st.p.poster}`, pad, pad + 28 * s);
   tracking(ctx, 0);
 
-  /* capa grande centralizada */
-  const lado = Math.min(W - pad * 2, tall ? H * 0.42 : H * 0.5);
-  const cx = (W - lado) / 2;
-  const cy = pad + (tall ? 96 : 72) * s;
+  const heroX = pad;
+  const heroY = pad + (tall ? 70 : 56) * s;
+  const heroW = W - pad * 2;
+  const heroH = tall ? Math.min(610 * s, H * 0.33) : Math.min(440 * s, H * 0.30);
+
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.6)";
-  ctx.shadowBlur = 60 * s;
-  ctx.shadowOffsetY = 24 * s;
-  if (im) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(cx, cy, lado, lado);
-    ctx.clip();
-    const e = Math.max(lado / im.width, lado / im.height);
-    ctx.drawImage(im, cx + (lado - im.width * e) / 2, cy + (lado - im.height * e) / 2, im.width * e, im.height * e);
-    ctx.restore();
-    ctx.strokeStyle = "rgba(255,255,255,0.14)";
-    ctx.lineWidth = Math.max(1, lado * 0.006);
-    ctx.strokeRect(cx, cy, lado, lado);
+  ctx.shadowColor = "rgba(0,0,0,.48)";
+  ctx.shadowBlur = 42 * s;
+  ctx.shadowOffsetY = 18 * s;
+  if (heroImg) {
+    imagemRecortada(ctx, heroUrl, heroX, heroY, heroW, heroH, 14 * s, titulo, false, "rgba(255,255,255,.16)");
   } else {
-    desenharCapa(ctx, alvo, cx, cy, lado, "#1A1A1F", "#3E3E46", "Anton");
+    roundRect(ctx, heroX, heroY, heroW, heroH, 14 * s);
+    const g = ctx.createLinearGradient(heroX, heroY, heroX + heroW, heroY + heroH);
+    g.addColorStop(0, "#7B228A");
+    g.addColorStop(1, "#9C3A1C");
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.20)";
+    ctx.lineWidth = 3 * s;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.92)";
+    ctx.textAlign = "center";
+    ctx.font = `${Math.min(heroW, heroH) * 0.34}px Anton`;
+    ctx.fillText((titulo || "?").charAt(0).toUpperCase(), heroX + heroW / 2, heroY + heroH * 0.60);
+    ctx.font = `600 ${22 * s}px Inter`;
+    ctx.fillText("SEM IMAGEM DISPONÍVEL", heroX + heroW / 2, heroY + heroH * 0.80);
+    ctx.textAlign = "left";
   }
   ctx.restore();
 
-  let y = cy + lado + (tall ? 86 : 62) * s;
-
-  ctx.textAlign = "center";
+  let y = heroY + heroH + (tall ? 52 : 40) * s;
   ctx.fillStyle = accent;
-  writeFit(ctx, (legendaTitulo || "—").toUpperCase(), W / 2, y, W - pad * 2, (tall ? 74 : 58) * s, 28 * s, "Anton");
-  y += (tall ? 48 : 40) * s;
-  ctx.fillStyle = "#B9B9C0";
-  ctx.font = `500 ${(tall ? 30 : 26) * s}px Archivo`;
-  ctx.fillText(truncate(ctx, legendaSub || "", W - pad * 2), W / 2, y);
-  ctx.textAlign = "left";
+  writeFit(ctx, titulo.toUpperCase(), pad, y, W - pad * 2, (tall ? 74 : 56) * s, 28 * s, "Anton");
+  y += (tall ? 42 : 34) * s;
+  ctx.fillStyle = "rgba(255,255,255,.74)";
+  ctx.font = `500 ${(tall ? 28 : 22) * s}px Archivo`;
+  ctx.fillText(truncate(ctx, subtitulo || (data.period === "semana" ? "artista em foco" : "destaque do período"), W - pad * 2), pad, y);
 
-  if (tall) {
-    const faixa = (data.topTracks || [])[0];
-    const iy = y + 104 * s;
-    ctx.fillStyle = "rgba(255,255,255,.14)";
-    ctx.fillRect(pad, iy - 34 * s, W - pad * 2, 2 * s);
-    ctx.fillStyle = "#7B7B84";
-    ctx.font = `600 ${18 * s}px Archivo`;
-    const rot = data.period === "ano" ? "FAIXA DO ANO" : data.period === "mes" ? "FAIXA DO MÊS" : "FAIXA MAIS OUVIDA";
-    ctx.fillText(rot, pad, iy);
+  const panelY = y + (tall ? 34 : 28) * s;
+  const panelH = H - panelY - footerGap;
+  ctx.save();
+  roundRect(ctx, pad, panelY, W - pad * 2, panelH, 24 * s);
+  ctx.fillStyle = "rgba(255,255,255,.10)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.18)";
+  ctx.lineWidth = 2 * s;
+  ctx.stroke();
+  ctx.restore();
+
+  const inner = pad + 28 * s;
+  const gap = 30 * s;
+  const colW = (W - inner * 2 - gap) / 2;
+  const cardTop = panelY + 34 * s;
+  const card = (x0, label, image, title, meta) => {
+    ctx.fillStyle = "rgba(255,255,255,.52)";
+    ctx.font = `700 ${(tall ? 16 : 14) * s}px Archivo`;
+    ctx.fillText(label, x0, cardTop);
+    const cover = tall ? 92 * s : 74 * s;
+    imagemRecortada(ctx, image, x0, cardTop + 20 * s, cover, cover, 10 * s, title, true, "rgba(255,255,255,.14)");
+    const tx = x0 + cover + 18 * s;
     ctx.fillStyle = "#FFFFFF";
-    writeFit(ctx, (faixa?.name || "—").toUpperCase(), pad, iy + 50 * s, W * 0.62, 42 * s, 24 * s, "Anton");
-    ctx.textAlign = "right";
-    ctx.fillStyle = "#B9B9C0";
-    ctx.font = `500 ${22 * s}px Archivo`;
-    ctx.fillText(faixa?.artist || "", W - pad, iy + 48 * s);
-    ctx.textAlign = "left";
-  }
+    writeFit(ctx, title || "—", tx, cardTop + (tall ? 52 : 42) * s, colW - cover - 18 * s, (tall ? 30 : 24) * s, 15 * s, "Inter", "700");
+    ctx.fillStyle = "rgba(255,255,255,.60)";
+    writeFit(ctx, meta || "", tx, cardTop + (tall ? 84 : 67) * s, colW - cover - 18 * s, (tall ? 18 : 15) * s, 11 * s, "Inter", "500");
+  };
+  card(inner, data.period === "ano" ? "FAIXA DO ANO" : data.period === "mes" ? "FAIXA DO MÊS" : "FAIXA MAIS OUVIDA", faixa.capa, faixa.name, faixa.artist || "");
+  card(inner + colW + gap, data.period === "ano" ? "ÁLBUM DO ANO" : data.period === "mes" ? "ÁLBUM DO MÊS" : "ÁLBUM MAIS OUVIDO", album.capa, album.name, album.artist || "");
 
-  /* faixa de métricas */
-  const fy = H - (tall ? 210 : 160) * s;
-  ctx.fillStyle = "#242429";
-  ctx.fillRect(pad, fy, W - pad * 2, 2 * s);
+  const line1 = cardTop + (tall ? 136 : 110) * s;
+  ctx.strokeStyle = "rgba(255,255,255,.14)";
+  ctx.beginPath();
+  ctx.moveTo(inner, line1);
+  ctx.lineTo(W - inner, line1);
+  ctx.stroke();
 
-  const metricas = [
-    ["SCROBBLES", st.count],
-    st.temTempo ? ["TEMPO", st.tempo.toUpperCase()] : null,
+  const listTitleY = line1 + (tall ? 34 : 28) * s;
+  const leftItems = artists.slice(0, tall ? 4 : 3);
+  const rightItems = tracks.slice(0, tall ? 4 : 3);
+  const rowH = tall ? 56 * s : 48 * s;
+  const drawMiniList = (x0, title, items, getName, getMeta) => {
+    ctx.fillStyle = "rgba(255,255,255,.52)";
+    ctx.font = `700 ${(tall ? 16 : 14) * s}px Archivo`;
+    ctx.fillText(title, x0, listTitleY);
+    let yy = listTitleY + (tall ? 34 : 28) * s;
+    items.forEach((it, i) => {
+      ctx.fillStyle = i === 0 ? accent : "rgba(255,255,255,.44)";
+      ctx.font = `700 ${(tall ? 18 : 16) * s}px Inter`;
+      ctx.fillText(String(i + 1), x0, yy);
+      ctx.fillStyle = "#FFFFFF";
+      writeFit(ctx, getName(it), x0 + 28 * s, yy, colW - 28 * s, (tall ? 24 : 20) * s, 14 * s, "Inter", "700");
+      ctx.fillStyle = "rgba(255,255,255,.56)";
+      writeFit(ctx, getMeta(it), x0 + 28 * s, yy + (tall ? 22 : 18) * s, colW - 28 * s, (tall ? 15 : 13) * s, 10 * s, "Inter", "500");
+      yy += rowH;
+    });
+    return yy;
+  };
+  const endL = drawMiniList(inner, "ARTISTAS EM DESTAQUE", leftItems, (a) => a.name || "—", (a) => `${a.playcount || 0} reproduções`);
+  const endR = drawMiniList(inner + colW + gap, "OUTRAS FAIXAS", rightItems, (t) => t.name || "—", (t) => t.artist || "");
+
+  const metricsY = Math.max(endL, endR) + (tall ? 10 : 8) * s;
+  ctx.strokeStyle = "rgba(255,255,255,.14)";
+  ctx.beginPath();
+  ctx.moveTo(inner, metricsY);
+  ctx.lineTo(W - inner, metricsY);
+  ctx.stroke();
+  const metrics = [
+    ["REPRODUÇÕES", st.count],
+    ["TEMPO", st.tempo.toUpperCase()],
     ["ARTISTAS", st.unique],
-  ].filter(Boolean);
-  const cw = (W - pad * 2) / metricas.length;
-  metricas.forEach(([rot, val], i) => {
-    const x = pad + cw * i;
-    ctx.fillStyle = "#7B7B84";
-    tracking(ctx, 2 * s);
-    ctx.font = `600 ${19 * s}px Archivo`;
-    ctx.fillText(rot, x, fy + 40 * s);
-    tracking(ctx, 0);
+  ];
+  const mw = (W - inner * 2) / metrics.length;
+  metrics.forEach(([label, value], i) => {
+    const xx = inner + mw * i;
+    ctx.fillStyle = "rgba(255,255,255,.48)";
+    ctx.font = `700 ${(tall ? 15 : 13) * s}px Archivo`;
+    ctx.fillText(label, xx, metricsY + 30 * s);
     ctx.fillStyle = "#FFFFFF";
-    writeFit(ctx, val, x, fy + (tall ? 98 : 86) * s, cw - 18 * s, (tall ? 52 : 44) * s, 24 * s, "Anton");
+    writeFit(ctx, value, xx, metricsY + (tall ? 72 : 58) * s, mw - 16 * s, (tall ? 34 : 28) * s, 16 * s, "Inter", "700");
   });
-
-  ctx.fillStyle = "#7B7B84";
-  tracking(ctx, 2 * s);
-  ctx.font = `600 ${22 * s}px Archivo`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.5), pad, H - 50 * s);
-  ctx.fillText(st.range, W - pad - ctx.measureText(st.range).width, H - 50 * s);
-  tracking(ctx, 0);
 }
-
-
-/* ============================================================
-   LAYOUTS 8–14 — FOTO / REPLAY
-   Leituras autorais de rankings, destaques, comparativos e editoriais.
-   ============================================================ */
 
 function tomDeNome(nome = "", salto = 0) {
   let h = 0;
@@ -1855,10 +1959,10 @@ function malhaEscura(ctx, W, H, quente = false) {
 
 function cabecalhoReplay(ctx, W, s, esquerda, direita, escuro = false) {
   ctx.fillStyle = escuro ? "rgba(255,255,255,.92)" : "#101014";
-  ctx.font = `700 ${24 * s}px Inter`;
-  ctx.fillText(esquerda, 48 * s, 68 * s);
+  ctx.font = `700 ${28 * s}px Inter`;
+  ctx.fillText(esquerda, 52 * s, 76 * s);
   ctx.textAlign = "right";
-  ctx.fillText(direita, W - 48 * s, 68 * s);
+  ctx.fillText(direita, W - 52 * s, 76 * s);
   ctx.textAlign = "left";
 }
 
@@ -1869,51 +1973,44 @@ function drawReplay(ctx, W, H, data) {
   const square = H <= W * 1.05;
   malhaClara(ctx, W, H);
 
-  const pad = 48 * s;
+  const pad = 52 * s;
   cabecalhoReplay(ctx, W, s, `FAIXA’${String(new Date().getFullYear()).slice(-2)}`, "SUA ESCUTA", false);
 
   ctx.fillStyle = "#111115";
-  ctx.font = `700 ${(tall ? 58 : 48) * s}px Inter`;
-  ctx.fillText("Top artistas", pad, (tall ? 178 : 150) * s);
-  ctx.fillStyle = "rgba(17,17,21,.5)";
-  ctx.font = `600 ${(tall ? 46 : 36) * s}px Inter`;
-  ctx.fillText(st.range, pad, (tall ? 228 : 194) * s);
+  ctx.font = `700 ${(tall ? 72 : 56) * s}px Inter`;
+  ctx.fillText("Artistas mais ouvidos", pad, (tall ? 190 : 158) * s);
+  ctx.fillStyle = "rgba(17,17,21,.52)";
+  ctx.font = `600 ${(tall ? 54 : 42) * s}px Inter`;
+  ctx.fillText(st.range, pad, (tall ? 246 : 204) * s);
 
   const itens = (data.topArtists || []).slice(0, square ? 4 : 5);
-  const baseInicio = (tall ? 310 : 248) * s;
-  const limite = H - (tall ? 150 : 96) * s;
-  const disponivel = limite - baseInicio;
-  const desejado = (tall ? (data.period === "ano" ? 236 : 248) : 158) * s;
+  const baseInicio = (tall ? 332 : 266) * s;
+  const limite = H - (tall ? 54 : 42) * s;
+  const disponivel = Math.max(1, limite - baseInicio);
+  const desejado = (tall ? (data.period === "ano" ? 252 : 264) : 172) * s;
   const rowH = Math.min(desejado, disponivel / Math.max(1, itens.length));
-  const inicio = baseInicio + Math.max(0, (disponivel - rowH * itens.length) * 0.16);
-  const d = Math.min(rowH * 0.7, (tall ? 146 : 112) * s);
+  const inicio = baseInicio + Math.max(0, (disponivel - rowH * itens.length) * 0.12);
+  const d = Math.min(rowH * 0.74, (tall ? 176 : 126) * s);
 
   itens.forEach((a, i) => {
     const cy = inicio + rowH * i + rowH * 0.48;
     ctx.fillStyle = "#111115";
     ctx.textAlign = "center";
-    ctx.font = `600 ${(tall ? 66 : 50) * s}px Inter`;
-    ctx.fillText(String(i + 1), pad + 22 * s, cy + 18 * s);
+    ctx.font = `600 ${(tall ? 76 : 58) * s}px Inter`;
+    ctx.fillText(String(i + 1), pad + 24 * s, cy + 20 * s);
     ctx.textAlign = "left";
 
-    const ix = pad + (tall ? 88 : 74) * s;
+    const ix = pad + (tall ? 94 : 78) * s;
     imagemRecortada(ctx, a.image, ix, cy - d / 2, d, d, d / 2, a.name, true, "rgba(17,17,21,.12)");
-    const tx = ix + d + (tall ? 38 : 28) * s;
+    const tx = ix + d + (tall ? 42 : 30) * s;
     ctx.fillStyle = "#111115";
-    writeFit(ctx, a.name, tx, cy - 2 * s, W - tx - pad, (tall ? 42 : 34) * s, 22 * s, "Inter", "700");
-    ctx.fillStyle = "rgba(17,17,21,.52)";
-    ctx.font = `500 ${(tall ? 27 : 22) * s}px Inter`;
+    writeFit(ctx, a.name, tx, cy - 5 * s, W - tx - pad, (tall ? 52 : 40) * s, 24 * s, "Inter", "700");
+    ctx.fillStyle = "rgba(17,17,21,.56)";
     const tempo = formatTempo((a.playcount || 0) * (data.mediaDur || 210), true);
-    ctx.fillText(`${tempo} · ${a.playcount || 0} plays`, tx, cy + (tall ? 36 : 30) * s);
+    writeFit(ctx, `${tempo} · ${a.playcount || 0} reproduções`, tx, cy + (tall ? 43 : 35) * s, W - tx - pad, (tall ? 34 : 26) * s, 18 * s, "Inter", "500");
   });
-
-  ctx.fillStyle = "rgba(17,17,21,.55)";
-  ctx.font = `600 ${20 * s}px Inter`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.55), pad, H - 42 * s);
-  ctx.textAlign = "right";
-  ctx.fillText(`${st.count} SCROBBLES`, W - pad, H - 42 * s);
-  ctx.textAlign = "left";
 }
+
 
 function drawEstrela(ctx, W, H, data) {
   const s = W / 1080;
@@ -1921,79 +2018,126 @@ function drawEstrela(ctx, W, H, data) {
   const tall = H >= W * 1.6;
   const a = (data.topArtists || [])[0] || { name: "—", playcount: 0, image: "" };
   const im = capaDe(a.image || data.artistImage);
+  const faixa = (data.topTracks || [])[0] || {};
+  const album = (data.topAlbums || [])[0] || {};
+  const pad = (tall ? 48 : 42) * s;
+  const accent = st.p.recap ? GOLD : PINK;
 
   ctx.fillStyle = "#160C08";
   ctx.fillRect(0, 0, W, H);
   if (im) {
     ctx.save();
-    ctx.filter = `blur(${65 * s}px) saturate(1.35)`;
-    ctx.globalAlpha = 0.72;
+    ctx.filter = `blur(${68 * s}px) saturate(1.4)`;
+    ctx.globalAlpha = 0.74;
     cobrir(ctx, im, -W * 0.12, -H * 0.1, W * 1.24, H * 1.2);
     ctx.restore();
   }
   const veil = ctx.createLinearGradient(0, 0, 0, H);
-  veil.addColorStop(0, "rgba(53,22,7,.34)");
-  veil.addColorStop(0.52, "rgba(12,8,8,.22)");
-  veil.addColorStop(1, "rgba(5,5,7,.86)");
+  veil.addColorStop(0, "rgba(50,18,7,.32)");
+  veil.addColorStop(0.50, "rgba(12,8,8,.23)");
+  veil.addColorStop(1, "rgba(5,5,7,.90)");
   ctx.fillStyle = veil;
   ctx.fillRect(0, 0, W, H);
 
   cabecalhoReplay(ctx, W, s, `FAIXA’${String(new Date().getFullYear()).slice(-2)}`, st.range, true);
-  const pad = 48 * s;
-  ctx.fillStyle = "rgba(255,255,255,.8)";
-  ctx.font = `600 ${(tall ? 34 : 28) * s}px Inter`;
-  ctx.fillText("Artista do período", pad, (tall ? 148 : 128) * s);
-
+  ctx.fillStyle = "rgba(255,255,255,.76)";
+  ctx.font = `600 ${(tall ? 31 : 26) * s}px Inter`;
+  ctx.fillText("Artista do período", pad, (tall ? 140 : 122) * s);
   ctx.fillStyle = "#FFFFFF";
-  writeFit(ctx, a.name, pad, (tall ? 250 : 216) * s, W - pad * 2, (tall ? 96 : 78) * s, 38 * s, "Inter", "700");
-  ctx.font = `700 ${(tall ? 38 : 31) * s}px Inter`;
-  ctx.fillText(`${a.playcount || 0} plays`, pad, (tall ? 308 : 266) * s);
+  writeFit(ctx, a.name, pad, (tall ? 230 : 200) * s, W - pad * 2, (tall ? 88 : 72) * s, 36 * s, "Inter", "700");
+  ctx.font = `700 ${(tall ? 34 : 28) * s}px Inter`;
+  ctx.fillText(`${a.playcount || 0} reproduções`, pad, (tall ? 284 : 246) * s);
 
-  const d = Math.min(W * (tall ? 0.78 : 0.62), H * (tall ? 0.46 : 0.52));
+  const d = Math.min(W * (tall ? 0.60 : 0.54), H * (tall ? 0.31 : 0.39));
   const x = (W - d) / 2;
-  const y = tall ? H * 0.31 : H * 0.35;
+  const y = tall ? H * 0.22 : H * 0.28;
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,.55)";
-  ctx.shadowBlur = 70 * s;
-  ctx.shadowOffsetY = 24 * s;
-  imagemRecortada(ctx, a.image || data.artistImage, x, y, d, d, d / 2, a.name, false, "rgba(255,255,255,.18)");
+  ctx.shadowBlur = 68 * s;
+  ctx.shadowOffsetY = 22 * s;
+  imagemRecortada(ctx, a.image || data.artistImage || album.capa, x, y, d, d, d / 2, a.name, false, "rgba(255,255,255,.18)");
   ctx.restore();
 
-  const fy = H - (tall ? 172 : 128) * s;
-  const faixa = (data.topTracks || [])[0];
-  if (tall && faixa) {
-    const infoY = Math.min(fy - 74 * s, y + d + 86 * s);
-    ctx.fillStyle = "rgba(255,255,255,.22)";
-    ctx.fillRect(pad, infoY - 36 * s, W - pad * 2, 1.5 * s);
-    ctx.fillStyle = "rgba(255,255,255,.54)";
-    ctx.font = `600 ${18 * s}px Inter`;
-    ctx.fillText("MÚSICA MAIS OUVIDA", pad, infoY);
-    ctx.fillStyle = "#FFFFFF";
-    writeFit(ctx, faixa.name, pad, infoY + 43 * s, W * 0.58, 32 * s, 20 * s, "Inter", "700");
-    ctx.textAlign = "right";
-    ctx.fillStyle = "rgba(255,255,255,.58)";
-    ctx.font = `500 ${20 * s}px Inter`;
-    ctx.fillText(faixa.artist || "", W - pad, infoY + 43 * s);
-    ctx.textAlign = "left";
-  }
+  const panelY = Math.min(y + d + (tall ? 42 : 34) * s, H - (tall ? 620 : 430) * s);
+  const panelH = H - panelY - (tall ? 210 : 150) * s;
+  ctx.save();
+  roundRect(ctx, pad, panelY, W - pad * 2, panelH, 24 * s);
+  ctx.fillStyle = "rgba(255,255,255,.10)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.20)";
+  ctx.lineWidth = 2 * s;
+  ctx.stroke();
+  ctx.restore();
 
-  const métricas = [
-    ["TEMPO", formatTempo((a.playcount || 0) * (data.mediaDur || 210), true).toUpperCase()],
+  const inner = pad + 30 * s;
+  const gap = 34 * s;
+  const colW = (W - inner * 2 - gap) / 2;
+  const blockY = panelY + 44 * s;
+  const card = (x0, label, image, title, meta) => {
+    ctx.fillStyle = "rgba(255,255,255,.52)";
+    ctx.font = `700 ${(tall ? 17 : 15) * s}px Inter`;
+    ctx.fillText(label, x0, blockY);
+    const cover = tall ? 106 * s : 82 * s;
+    imagemRecortada(ctx, image, x0, blockY + 24 * s, cover, cover, 12 * s, title, true, "rgba(255,255,255,.18)");
+    const tx = x0 + cover + 20 * s;
+    ctx.fillStyle = "#FFFFFF";
+    writeFit(ctx, title || "—", tx, blockY + (tall ? 63 : 51) * s, colW - cover - 20 * s, (tall ? 28 : 23) * s, 16 * s, "Inter", "700");
+    ctx.fillStyle = "rgba(255,255,255,.60)";
+    writeFit(ctx, meta || "", tx, blockY + (tall ? 94 : 76) * s, colW - cover - 20 * s, (tall ? 18 : 15) * s, 12 * s, "Inter", "500");
+  };
+  card(inner, "MÚSICA MAIS OUVIDA", faixa.capa, faixa.name, faixa.artist || "");
+  card(inner + colW + gap, "ÁLBUM MAIS OUVIDO", album.capa, album.name, album.artist || "");
+
+  const dividerY = blockY + (tall ? 164 : 130) * s;
+  ctx.strokeStyle = "rgba(255,255,255,.18)";
+  ctx.beginPath();
+  ctx.moveTo(inner, dividerY);
+  ctx.lineTo(W - inner, dividerY);
+  ctx.stroke();
+
+  const listTitleY = dividerY + (tall ? 34 : 28) * s;
+  const listRowH = tall ? 58 * s : 48 * s;
+  const drawList = (x0, title, items, getName, getMeta) => {
+    ctx.fillStyle = "rgba(255,255,255,.48)";
+    ctx.font = `700 ${(tall ? 16 : 14) * s}px Archivo`;
+    ctx.fillText(title, x0, listTitleY);
+    let yy = listTitleY + (tall ? 36 : 30) * s;
+    items.slice(0, tall ? 4 : 3).forEach((it, i) => {
+      ctx.fillStyle = i === 0 ? accent : "rgba(255,255,255,.42)";
+      ctx.font = `700 ${(tall ? 18 : 16) * s}px Inter`;
+      ctx.fillText(String(i + 1), x0, yy);
+      ctx.fillStyle = "#FFFFFF";
+      writeFit(ctx, getName(it), x0 + 28 * s, yy, colW - 28 * s, (tall ? 25 : 21) * s, 14 * s, "Inter", "700");
+      ctx.fillStyle = "rgba(255,255,255,.56)";
+      writeFit(ctx, getMeta(it), x0 + 28 * s, yy + (tall ? 22 : 18) * s, colW - 28 * s, (tall ? 15 : 13) * s, 10 * s, "Inter", "500");
+      yy += listRowH;
+    });
+    return yy;
+  };
+  const endL = drawList(inner, "ARTISTAS EM ALTA", data.topArtists || [], (it) => it.name || "—", (it) => `${it.playcount || 0} reproduções`);
+  const endR = drawList(inner + colW + gap, "FAIXAS EM ALTA", data.topTracks || [], (it) => it.name || "—", (it) => it.artist || "");
+
+  const metricsY = Math.max(endL, endR) + (tall ? 16 : 12) * s;
+  ctx.strokeStyle = "rgba(255,255,255,.18)";
+  ctx.beginPath();
+  ctx.moveTo(inner, metricsY);
+  ctx.lineTo(W - inner, metricsY);
+  ctx.stroke();
+
+  const metrics = [
+    ["TEMPO COM O ARTISTA", formatTempo((a.playcount || 0) * (data.mediaDur || 210), true).toUpperCase()],
     ["TOTAL", st.count],
     ["ARTISTAS", st.unique],
   ];
-  const cw = (W - pad * 2) / métricas.length;
-  métricas.forEach(([rot, val], i) => {
-    const xx = pad + cw * i;
-    ctx.fillStyle = "rgba(255,255,255,.55)";
-    ctx.font = `600 ${18 * s}px Inter`;
-    ctx.fillText(rot, xx, fy);
+  const mw = (W - inner * 2) / metrics.length;
+  metrics.forEach(([label, value], i) => {
+    const xx = inner + mw * i;
+    ctx.fillStyle = "rgba(255,255,255,.50)";
+    ctx.font = `700 ${(tall ? 15 : 13) * s}px Inter`;
+    ctx.fillText(label, xx, metricsY + 32 * s);
     ctx.fillStyle = "#FFFFFF";
-    writeFit(ctx, val, xx, fy + 48 * s, cw - 16 * s, 38 * s, 20 * s, "Inter", "700");
+    writeFit(ctx, value, xx, metricsY + (tall ? 76 : 60) * s, mw - 18 * s, (tall ? 34 : 27) * s, 17 * s, "Inter", "700");
   });
-  ctx.fillStyle = "rgba(255,255,255,.58)";
-  ctx.font = `600 ${19 * s}px Inter`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.5), pad, H - 38 * s);
 }
 
 function drawComparativo(ctx, W, H, data) {
@@ -2059,16 +2203,24 @@ function drawComparativo(ctx, W, H, data) {
     writeFit(ctx, semDados ? "Sem dados suficientes" : item.name, textX, y + h * 0.5, maxW, semDados ? 44 * s : 64 * s, 25 * s, "Inter", "700");
     ctx.fillStyle = "rgba(255,255,255,.62)";
     ctx.font = `500 ${23 * s}px Inter`;
-    ctx.fillText(semDados ? "O período anterior ainda não tem registros." : `${item.playcount || 0} plays`, textX, y + h * 0.5 + 44 * s);
+    ctx.fillText(semDados ? "O período anterior ainda não tem registros." : `${item.playcount || 0} reproduções`, textX, y + h * 0.5 + 44 * s);
+    if (semDados) {
+      ctx.fillStyle = "rgba(255,255,255,.12)";
+      roundRect(ctx, textX, y + h * 0.5 + 82 * s, Math.min(maxW, 390 * s), 82 * s, 14 * s);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.78)";
+      ctx.font = `700 ${20 * s}px Inter`;
+      ctx.fillText(`${st.count} REPRODUÇÕES AGORA`, textX + 20 * s, y + h * 0.5 + 116 * s);
+      ctx.fillStyle = "rgba(255,255,255,.5)";
+      ctx.font = `500 ${17 * s}px Inter`;
+      ctx.fillText(`${st.tempo.toUpperCase()} · ${st.unique} ARTISTAS`, textX + 20 * s, y + h * 0.5 + 145 * s);
+    }
     ctx.restore();
   };
 
   painel(topo, ph, atual, st.range, false, true);
   painel(topo + ph + gap, ph, anterior, st.prevRange, true, false);
 
-  ctx.fillStyle = "rgba(255,255,255,.58)";
-  ctx.font = `600 ${18 * s}px Inter`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.5), 48 * s, H - 24 * s);
 }
 
 function drawEditorial(ctx, W, H, data) {
@@ -2076,63 +2228,68 @@ function drawEditorial(ctx, W, H, data) {
   const st = strings(data);
   const tall = H >= W * 1.6;
   malhaEscura(ctx, W, H, false);
-  const pad = 48 * s;
+  const pad = 52 * s;
 
   cabecalhoReplay(ctx, W, s, "FAIXA", "RECAP VISUAL", true);
   ctx.textAlign = "center";
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = `700 ${(tall ? 58 : 46) * s}px Inter`;
-  ctx.fillText(st.range, W / 2, (tall ? 155 : 135) * s);
-  ctx.fillStyle = "rgba(255,255,255,.62)";
-  ctx.font = `600 ${(tall ? 30 : 24) * s}px Inter`;
-  ctx.fillText(`${st.count} scrobbles · ${st.tempo}`, W / 2, (tall ? 198 : 172) * s);
+  ctx.font = `700 ${(tall ? 66 : 50) * s}px Inter`;
+  ctx.fillText(st.range, W / 2, (tall ? 166 : 140) * s);
+  ctx.fillStyle = "rgba(255,255,255,.66)";
+  ctx.font = `600 ${(tall ? 33 : 26) * s}px Inter`;
+  ctx.fillText(`${st.count} reproduções · ${st.tempo}`, W / 2, (tall ? 212 : 178) * s);
   ctx.textAlign = "left";
 
-  const split = tall ? W * 0.49 : W * 0.54;
+  const split = tall ? W * 0.50 : W * 0.54;
   const listX = pad;
-  const listW = split - pad - 24 * s;
-  const colX = split + 14 * s;
+  const listW = split - pad - 28 * s;
+  const colX = split + 16 * s;
   const colW = W - colX - pad;
-  const qtdLista = densidadePeriodo(data);
+  const qtdLista = data.period === "semana" ? 4 : densidadePeriodo(data);
+  const fy = H - (tall ? 150 : 110) * s;
+  const startY = tall ? 294 * s : 242 * s;
+  const sectionGap = (tall ? 24 : 18) * s;
+  const headerGap = (tall ? 58 : 46) * s;
+  const available = Math.max(200 * s, fy - startY - sectionGap * 2 - headerGap * 3);
+  const rowH = Math.min((tall ? 88 : 68) * s, available / Math.max(1, qtdLista * 3));
+
   const lista = (titulo, itens, getNome, getMeta, y) => {
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = `700 ${(tall ? 29 : 23) * s}px Inter`;
+    ctx.font = `700 ${(tall ? 34 : 26) * s}px Inter`;
     ctx.fillText(titulo, listX, y);
-    let yy = y + (tall ? 54 : 44) * s;
+    let yy = y + headerGap;
     itens.slice(0, qtdLista).forEach((it, i) => {
-      ctx.fillStyle = "rgba(255,255,255,.42)";
-      ctx.font = `600 ${(tall ? 22 : 18) * s}px Inter`;
+      ctx.fillStyle = "rgba(255,255,255,.46)";
+      ctx.font = `600 ${(tall ? 24 : 19) * s}px Inter`;
       ctx.fillText(String(i + 1), listX, yy);
       ctx.fillStyle = "#FFFFFF";
-      writeFit(ctx, getNome(it), listX + 32 * s, yy, listW - 32 * s, (tall ? 27 : 22) * s, 16 * s, "Inter", "600");
-      ctx.fillStyle = "rgba(255,255,255,.5)";
-      ctx.font = `500 ${(tall ? 17 : 14) * s}px Inter`;
-      ctx.fillText(truncate(ctx, getMeta(it), listW - 32 * s), listX + 32 * s, yy + (tall ? 27 : 22) * s);
-      yy += tall ? (qtdLista >= 5 ? 67 : 74) * s : 63 * s;
+      writeFit(ctx, getNome(it), listX + 36 * s, yy, listW - 36 * s, (tall ? 31 : 24) * s, 18 * s, "Inter", "650");
+      ctx.fillStyle = "rgba(255,255,255,.54)";
+      writeFit(ctx, getMeta(it), listX + 36 * s, yy + (tall ? 31 : 25) * s, listW - 36 * s, (tall ? 20 : 16) * s, 14 * s, "Inter", "500");
+      yy += rowH;
     });
     return yy;
   };
 
-  let y = tall ? 300 * s : 250 * s;
-  y = lista("Top artistas", data.topArtists || [], (a) => a.name, (a) => `${a.playcount || 0} plays`, y) + 22 * s;
-  y = lista("Top músicas", data.topTracks || [], (t) => t.name, (t) => t.artist || "", y) + 22 * s;
-  lista("Top álbuns", data.topAlbums || [], (a) => a.name, (a) => a.artist || "", y);
+  let y = startY;
+  y = lista("Artistas mais ouvidos", data.topArtists || [], (a) => a.name, (a) => `${a.playcount || 0} reproduções`, y) + sectionGap;
+  y = lista("Faixas mais ouvidas", data.topTracks || [], (t) => t.name, (t) => t.artist || "", y) + sectionGap;
+  lista("Álbuns mais ouvidos", data.topAlbums || [], (a) => a.name, (a) => a.artist || "", y);
 
   const artista = (data.topArtists || [])[0] || {};
   const faixa = (data.topTracks || [])[0] || {};
   const album = (data.topAlbums || [])[0] || {};
-  const topY = tall ? 270 * s : 230 * s;
-  const d = Math.min(colW * 0.98, tall ? 370 * s : 265 * s);
+  const topY = tall ? 256 * s : 222 * s;
+  const d = Math.min(colW * 1.10, tall ? 445 * s : 294 * s);
   imagemRecortada(ctx, artista.image, colX + (colW - d) / 2, topY, d, d, d / 2, artista.name, false);
-  const cardW = colW * 0.86;
-  const cardH = tall ? 350 * s : 235 * s;
-  imagemRecortada(ctx, faixa.capa, colX, topY + d * 0.72, cardW, cardH, 28 * s, faixa.name, false);
-  const alb = tall ? 400 * s : 280 * s;
-  imagemRecortada(ctx, album.capa, colX + colW - alb, topY + d * 0.72 + cardH * 0.74, alb, alb, 22 * s, album.name, false);
+  const cardW = colW * 0.92;
+  const cardH = tall ? 425 * s : 270 * s;
+  imagemRecortada(ctx, faixa.capa, colX - 4 * s, topY + d * 0.70, cardW, cardH, 30 * s, faixa.name, false);
+  const alb = tall ? 472 * s : 318 * s;
+  imagemRecortada(ctx, album.capa, colX + colW - alb + 8 * s, topY + d * 0.70 + cardH * 0.72, alb, alb, 24 * s, album.name, false);
 
-  const fy = H - (tall ? 170 : 115) * s;
-  ctx.fillStyle = "rgba(255,255,255,.18)";
-  ctx.fillRect(pad, fy - 34 * s, W - pad * 2, 2 * s);
+  ctx.fillStyle = "rgba(255,255,255,.20)";
+  ctx.fillRect(pad, fy - 36 * s, W - pad * 2, 2 * s);
   const metricas = [
     ["TOTAL", st.count],
     ["TEMPO", st.tempo.toUpperCase()],
@@ -2141,15 +2298,12 @@ function drawEditorial(ctx, W, H, data) {
   const mw = (W - pad * 2) / metricas.length;
   metricas.forEach(([rot, val], i) => {
     const x = pad + mw * i;
-    ctx.fillStyle = "rgba(255,255,255,.48)";
-    ctx.font = `600 ${16 * s}px Inter`;
+    ctx.fillStyle = "rgba(255,255,255,.52)";
+    ctx.font = `600 ${(tall ? 19 : 16) * s}px Inter`;
     ctx.fillText(rot, x, fy);
     ctx.fillStyle = "#FFFFFF";
-    writeFit(ctx, val, x, fy + 40 * s, mw - 20 * s, 31 * s, 18 * s, "Inter", "700");
+    writeFit(ctx, val, x, fy + (tall ? 48 : 39) * s, mw - 20 * s, (tall ? 38 : 31) * s, 20 * s, "Inter", "700");
   });
-  ctx.fillStyle = "rgba(255,255,255,.55)";
-  ctx.font = `600 ${18 * s}px Inter`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.5), pad, H - 28 * s);
 }
 
 function drawParada(ctx, W, H, data) {
@@ -2157,9 +2311,14 @@ function drawParada(ctx, W, H, data) {
   const st = strings(data);
   const tall = H >= W * 1.6;
   const square = H <= W * 1.05;
-  ctx.fillStyle = "#F2EFEA";
+  const paper = "#F2EFEA";
+  const roxo = "#7337A5";
+  const ink = "#241A2B";
+  const pad = (tall ? 48 : 42) * s;
+
+  ctx.fillStyle = paper;
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = "rgba(70,38,114,.17)";
+  ctx.strokeStyle = "rgba(70,38,114,.15)";
   ctx.lineWidth = 2 * s;
   for (let y = 86 * s; y < H; y += 92 * s) {
     ctx.beginPath();
@@ -2168,54 +2327,61 @@ function drawParada(ctx, W, H, data) {
     ctx.stroke();
   }
 
-  const roxo = "#7337A5";
-  const pad = 48 * s;
   cabecalhoReplay(ctx, W, s, "FAIXA · PARADA", st.range, false);
   ctx.fillStyle = roxo;
-  ctx.font = `700 ${(tall ? 76 : 62) * s}px Inter`;
-  ctx.fillText("Em rotação", pad, (tall ? 170 : 146) * s);
-  ctx.font = `700 ${(tall ? 54 : 46) * s}px Inter`;
+  ctx.font = `700 ${(tall ? 72 : 58) * s}px Inter`;
+  ctx.fillText("Em rotação", pad, (tall ? 158 : 136) * s);
+  ctx.font = `700 ${(tall ? 50 : 40) * s}px Inter`;
   const recorte = data.period === "ano" ? "no ano" : data.period === "mes" ? "no mês" : "na semana";
-  ctx.fillText(recorte, pad, (tall ? 232 : 198) * s);
+  ctx.fillText(recorte, pad, (tall ? 214 : 184) * s);
 
   const art = (data.topArtists || [])[0] || {};
-  const rd = tall ? 190 * s : 145 * s;
-  imagemRecortada(ctx, art.image, W - pad - rd, (tall ? 92 : 82) * s, rd, rd, rd / 2, art.name, true, "rgba(70,38,114,.2)");
+  const rd = tall ? 166 * s : 126 * s;
+  imagemRecortada(ctx, art.image, W - pad - rd, (tall ? 78 : 70) * s, rd, rd, rd / 2, art.name, true, "rgba(70,38,114,.2)");
 
-  const maxItens = data.period === "semana" ? 6 : 10;
-  const itens = (data.topAlbums || []).slice(0, square ? Math.min(6, maxItens) : maxItens);
-  const cols = 2;
+  const maxItens = square ? 6 : tall ? 10 : 8;
+  const itens = (data.topAlbums || []).slice(0, maxItens);
+  const cols = square ? 2 : 2;
   const rows = Math.ceil(itens.length / cols);
-  const startY = tall ? 316 * s : 260 * s;
-  const colGap = 42 * s;
-  const colW = (W - pad * 2 - colGap) / 2;
-  const desejado = (tall ? (data.period === "semana" ? 250 : 224) : 150) * s;
-  const rowH = Math.min(desejado, (H - startY - 115 * s) / Math.max(1, rows));
+  const startY = tall ? 278 * s : 232 * s;
+  const endY = H - (tall ? 40 : 32) * s;
+  const colGap = (tall ? 44 : 32) * s;
+  const colW = (W - pad * 2 - colGap) / cols;
+  const rowH = Math.max((tall ? 170 : 122) * s, (endY - startY) / Math.max(1, rows));
+
   itens.forEach((a, i) => {
     const col = i >= rows ? 1 : 0;
     const row = i % rows;
     const x = pad + col * (colW + colGap);
     const y = startY + row * rowH;
-    const lado = Math.min(rowH * 0.62, tall ? 112 * s : 82 * s);
-    ctx.fillStyle = "rgba(70,38,114,.7)";
-    ctx.font = `700 ${(tall ? 22 : 18) * s}px Inter`;
-    ctx.fillText(String(i + 1), x, y + lado * 0.62);
-    imagemRecortada(ctx, a.capa, x + 34 * s, y, lado, lado, 2 * s, a.name, true, "rgba(70,38,114,.18)");
-    const tx = x + 34 * s + lado + 22 * s;
-    ctx.fillStyle = roxo;
-    writeFit(ctx, a.name, tx, y + lado * 0.44, colW - (tx - x), (tall ? 25 : 20) * s, 14 * s, "Inter", "700");
-    ctx.fillStyle = "rgba(70,38,114,.68)";
-    ctx.font = `500 ${(tall ? 17 : 15) * s}px Inter`;
-    ctx.fillText(truncate(ctx, `${a.artist || ""} · ${a.playcount || 0} plays`, colW - (tx - x)), tx, y + lado * 0.74);
+    const isFirst = i === 0;
+    if (isFirst) {
+      ctx.save();
+      roundRect(ctx, x - 12 * s, y - 10 * s, colW + 12 * s, Math.min(rowH - 12 * s, tall ? 178 * s : 128 * s), 14 * s);
+      ctx.fillStyle = "rgba(115,55,165,.10)";
+      ctx.fill();
+      ctx.restore();
+    }
+    const lado = Math.min(rowH * 0.62, tall ? 142 * s : 94 * s);
+    ctx.fillStyle = isFirst ? roxo : "rgba(70,38,114,.62)";
+    ctx.font = `700 ${(tall ? 25 : 20) * s}px Inter`;
+    ctx.fillText(String(i + 1), x, y + lado * 0.60);
+    imagemRecortada(ctx, a.capa, x + 36 * s, y, lado, lado, 5 * s, a.name, true, "rgba(70,38,114,.18)");
+    const tx = x + 36 * s + lado + 20 * s;
+    const maxW = colW - (tx - x) - 4 * s;
+    ctx.fillStyle = isFirst ? ink : roxo;
+    writeFit(ctx, a.name, tx, y + lado * 0.42, maxW, (tall ? 28 : 22) * s, 15 * s, "Inter", "700");
+    ctx.fillStyle = "rgba(70,38,114,.70)";
+    writeFit(ctx, `${a.artist || ""} · ${a.playcount || 0} reproduções`, tx, y + lado * 0.72, maxW, (tall ? 18 : 15) * s, 12 * s, "Inter", "500");
   });
 
-  ctx.fillStyle = roxo;
-  ctx.font = `700 ${20 * s}px Inter`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.5), pad, H - 34 * s);
-  ctx.textAlign = "right";
-  ctx.fillText(`${st.count} SCROBBLES`, W - pad, H - 34 * s);
-  ctx.textAlign = "left";
+  if (!itens.length) {
+    ctx.fillStyle = "rgba(70,38,114,.62)";
+    ctx.font = `600 ${30 * s}px Inter`;
+    ctx.fillText("Ainda não há álbuns suficientes neste período.", pad, startY + 80 * s);
+  }
 }
+
 
 function drawFaixas(ctx, W, H, data) {
   const s = W / 1080;
@@ -2224,76 +2390,102 @@ function drawFaixas(ctx, W, H, data) {
   const square = H <= W * 1.05;
   const roxo = "#3F294F";
   const lima = "#C7FA61";
+  const coral = "#F0A77F";
+  const paper = "#F1ECE4";
+  const album = (data.topAlbums || [])[0] || {};
+  const artista = (data.topArtists || [])[0] || {};
+
   ctx.fillStyle = roxo;
   ctx.fillRect(0, 0, W, H);
-
-  ctx.fillStyle = "#F0A77F";
+  ctx.fillStyle = coral;
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.bezierCurveTo(W * 0.3, H * 0.12, W * 0.2, H * 0.35, 0, H * 0.29);
+  ctx.bezierCurveTo(W * 0.30, H * 0.10, W * 0.20, H * 0.34, 0, H * 0.29);
   ctx.closePath();
   ctx.fill();
   ctx.fillStyle = lima;
   ctx.beginPath();
   ctx.moveTo(W, 0);
-  ctx.bezierCurveTo(W * 0.62, H * 0.16, W * 0.92, H * 0.38, W, H * 0.45);
+  ctx.bezierCurveTo(W * 0.63, H * 0.14, W * 0.91, H * 0.36, W, H * 0.44);
   ctx.closePath();
   ctx.fill();
 
-  const pad = 42 * s;
-  const px = pad;
-  const py = tall ? 120 * s : 86 * s;
-  const pw = W - pad * 2;
-  const ph = H - py - (tall ? 90 : 65) * s;
-  ctx.fillStyle = "#F1ECE4";
-  roundRect(ctx, px, py, pw, ph, 30 * s);
+  const outer = (tall ? 42 : 34) * s;
+  const px = outer;
+  const py = tall ? 78 * s : 62 * s;
+  const pw = W - outer * 2;
+  const ph = H - py - (tall ? 34 : 28) * s;
+  ctx.fillStyle = paper;
+  roundRect(ctx, px, py, pw, ph, 34 * s);
   ctx.fill();
 
   ctx.fillStyle = roxo;
   ctx.textAlign = "center";
-  ctx.font = `700 ${(tall ? 54 : 44) * s}px Inter`;
-  const tituloFaixas = data.period === "ano" ? "Faixas do ano" : data.period === "mes" ? "Faixas do mês" : "Faixas da semana";
-  ctx.fillText(tituloFaixas, W / 2, py + (tall ? 100 : 80) * s);
+  ctx.font = `700 ${(tall ? 60 : 47) * s}px Inter`;
+  const titulo = data.period === "ano" ? "Faixas do ano" : data.period === "mes" ? "Faixas do mês" : "Faixas da semana";
+  ctx.fillText(titulo, W / 2, py + (tall ? 98 : 78) * s);
   ctx.fillStyle = "rgba(63,41,79,.62)";
-  ctx.font = `600 ${(tall ? 20 : 17) * s}px Inter`;
+  ctx.font = `600 ${(tall ? 22 : 18) * s}px Inter`;
   ctx.fillText("as que mais voltaram para o começo", W / 2, py + (tall ? 136 : 108) * s);
   ctx.textAlign = "left";
 
-  const itens = (data.topTracks || []).slice(0, square ? 4 : 5);
-  const startY = py + (tall ? 205 : 142) * s;
-  const bottom = py + ph - (tall ? 138 : 96) * s;
-  const desejado = (tall ? 218 : 142) * s;
-  const rowH = Math.min(desejado, (bottom - startY) / Math.max(1, itens.length));
-  const blocoH = rowH * itens.length;
-  const inicio = startY + Math.max(0, (bottom - startY - blocoH) * 0.28);
-  const lado = Math.min(rowH * 0.56, tall ? 112 * s : 80 * s);
+  const maxItens = square ? 4 : tall ? 5 : 5;
+  const itens = (data.topTracks || []).slice(0, maxItens);
+  const startY = py + (tall ? 210 : 156) * s;
+  const metricsH = (tall ? 214 : 156) * s;
+  const bottom = py + ph - metricsH - (tall ? 24 : 18) * s;
+  const rowH = Math.max((tall ? 154 : 112) * s, (bottom - startY) / Math.max(1, itens.length));
+  const cover = Math.min(rowH * 0.66, tall ? 132 * s : 94 * s);
+
   itens.forEach((t, i) => {
-    const y = inicio + i * rowH + rowH * 0.5;
+    const cy = startY + rowH * i + rowH * 0.5;
+    const lineY = startY + rowH * (i + 1);
+    if (i < itens.length - 1) {
+      ctx.fillStyle = "rgba(63,41,79,.10)";
+      ctx.fillRect(px + 54 * s, lineY - 2 * s, pw - 108 * s, 2 * s);
+    }
     ctx.fillStyle = roxo;
     ctx.textAlign = "right";
-    ctx.font = `700 ${(tall ? 46 : 34) * s}px Inter`;
-    ctx.fillText(`#${i + 1}`, px + (tall ? 150 : 120) * s, y + 14 * s);
+    ctx.font = `700 ${(tall ? 54 : 40) * s}px Inter`;
+    ctx.fillText(`#${i + 1}`, px + (tall ? 156 : 124) * s, cy + 16 * s);
     ctx.textAlign = "left";
-    const ix = px + (tall ? 178 : 140) * s;
-    imagemRecortada(ctx, t.capa, ix, y - lado / 2, lado, lado, 2 * s, t.name, true, "rgba(63,41,79,.18)");
-    const tx = ix + lado + 28 * s;
+    const ix = px + (tall ? 188 : 150) * s;
+    imagemRecortada(ctx, t.capa, ix, cy - cover / 2, cover, cover, 8 * s, t.name, true, "rgba(63,41,79,.18)");
+    const tx = ix + cover + (tall ? 32 : 24) * s;
+    const maxW = px + pw - tx - (tall ? 48 : 32) * s;
     ctx.fillStyle = roxo;
-    writeFit(ctx, t.name, tx, y - 2 * s, px + pw - tx - 34 * s, (tall ? 31 : 25) * s, 16 * s, "Inter", "700");
-    ctx.fillStyle = "rgba(63,41,79,.7)";
-    ctx.font = `500 ${(tall ? 20 : 17) * s}px Inter`;
-    ctx.fillText(truncate(ctx, `${t.artist || ""} · ${t.playcount || 0} plays`, px + pw - tx - 34 * s), tx, y + (tall ? 30 : 24) * s);
+    writeFit(ctx, t.name, tx, cy - 4 * s, maxW, (tall ? 40 : 30) * s, 18 * s, "Inter", "700");
+    ctx.fillStyle = "rgba(63,41,79,.72)";
+    writeFit(ctx, `${t.artist || ""} · ${t.playcount || 0} reproduções`, tx, cy + (tall ? 36 : 28) * s, maxW, (tall ? 24 : 18) * s, 14 * s, "Inter", "500");
   });
 
-  const fy = py + ph - (tall ? 92 : 68) * s;
+  const infoY = py + ph - metricsH + (tall ? 22 : 18) * s;
+  ctx.fillStyle = "rgba(63,41,79,.08)";
+  roundRect(ctx, px + 42 * s, infoY, pw - 84 * s, tall ? 84 * s : 68 * s, 18 * s);
+  ctx.fill();
+  const colW = (pw - 84 * s) / 2;
+  ctx.fillStyle = "rgba(63,41,79,.56)";
+  ctx.font = `700 ${(tall ? 17 : 14) * s}px Inter`;
+  ctx.fillText("ARTISTA EM LOOP", px + 64 * s, infoY + (tall ? 28 : 24) * s);
+  ctx.fillText("ÁLBUM MAIS OUVIDO", px + 64 * s + colW, infoY + (tall ? 28 : 24) * s);
   ctx.fillStyle = roxo;
-  ctx.font = `700 ${(tall ? 24 : 20) * s}px Inter`;
-  ctx.fillText(`${st.count} scrobbles`, px + 44 * s, fy);
-  ctx.textAlign = "right";
-  ctx.fillText(st.tempo, px + pw - 44 * s, fy);
-  ctx.textAlign = "left";
-  ctx.fillStyle = "rgba(255,255,255,.72)";
-  ctx.font = `600 ${18 * s}px Inter`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.6), pad, H - 30 * s);
+  writeFit(ctx, artista.name || "—", px + 64 * s, infoY + (tall ? 60 : 49) * s, colW - 22 * s, (tall ? 29 : 23) * s, 15 * s, "Inter", "700");
+  writeFit(ctx, album.name || "—", px + 64 * s + colW, infoY + (tall ? 60 : 49) * s, colW - 24 * s, (tall ? 29 : 23) * s, 15 * s, "Inter", "700");
+
+  const metricsY = infoY + (tall ? 116 : 92) * s;
+  ctx.fillStyle = "rgba(63,41,79,.16)";
+  ctx.fillRect(px + 44 * s, metricsY - 20 * s, pw - 88 * s, 2 * s);
+  const metrics = [["REPRODUÇÕES", st.count], ["TEMPO", st.tempo.toUpperCase()], ["ARTISTAS", st.unique]];
+  const innerX = px + 44 * s;
+  const mw = (pw - 88 * s) / metrics.length;
+  metrics.forEach(([label, value], i) => {
+    const x = innerX + mw * i;
+    ctx.fillStyle = "rgba(63,41,79,.60)";
+    ctx.font = `700 ${(tall ? 18 : 15) * s}px Inter`;
+    ctx.fillText(label, x, metricsY);
+    ctx.fillStyle = roxo;
+    writeFit(ctx, value, x, metricsY + (tall ? 48 : 38) * s, mw - 16 * s, (tall ? 38 : 30) * s, 17 * s, "Inter", "700");
+  });
 }
 
 function linhaOnda(ctx, W, y, amp, esp, cor, grossura) {
@@ -2328,71 +2520,68 @@ function drawOndas(ctx, W, H, data) {
 
   cabecalhoReplay(ctx, W, s, "FAIXA · ONDAS", st.range, true);
   const pad = 52 * s;
-  ctx.fillStyle = "rgba(255,255,255,.94)";
-  ctx.font = `700 ${(tall ? 48 : 38) * s}px Inter`;
-  ctx.fillText("Frequência do período", pad, (tall ? 150 : 126) * s);
-  ctx.fillStyle = "rgba(255,255,255,.68)";
-  ctx.font = `500 ${(tall ? 22 : 18) * s}px Inter`;
+  ctx.fillStyle = "rgba(255,255,255,.96)";
+  ctx.font = `700 ${(tall ? 62 : 46) * s}px Inter`;
+  ctx.fillText("Frequência do período", pad, (tall ? 160 : 132) * s);
+  ctx.fillStyle = "rgba(255,255,255,.72)";
+  ctx.font = `500 ${(tall ? 27 : 22) * s}px Inter`;
   const subOndas = data.period === "ano" ? "um ano inteiro em movimento" : data.period === "mes" ? "o mês visto como ritmo" : "sete dias em repetição";
-  ctx.fillText(subOndas, pad, (tall ? 188 : 158) * s);
-  const mid = tall ? H * 0.31 : H * 0.32;
+  ctx.fillText(subOndas, pad, (tall ? 202 : 166) * s);
+
+  const mid = tall ? H * 0.305 : H * 0.32;
   for (let i = -3; i <= 3; i++) {
-    linhaOnda(ctx, W, mid + i * 52 * s, 65 * s, 0, i % 2 ? "rgba(255,255,255,.86)" : "rgba(87,56,119,.88)", 34 * s);
+    linhaOnda(ctx, W, mid + i * 54 * s, 68 * s, 0, i % 2 ? "rgba(255,255,255,.88)" : "rgba(87,56,119,.9)", 36 * s);
   }
 
   const alvo = (data.topArtists || [])[0] || {};
   const album = (data.topAlbums || [])[0] || {};
-  const size = Math.min(W * (square ? 0.36 : 0.44), tall ? 410 * s : 340 * s);
+  const size = Math.min(W * (square ? 0.38 : 0.48), tall ? 450 * s : 352 * s);
   const ix = (W - size) / 2;
   const iy = mid - size * 0.45;
   ctx.save();
   ctx.shadowColor = "rgba(32,12,42,.45)";
-  ctx.shadowBlur = 42 * s;
+  ctx.shadowBlur = 46 * s;
   ctx.shadowOffsetY = 20 * s;
-  imagemRecortada(ctx, alvo.image || album.capa, ix, iy, size, size, 10 * s, alvo.name || album.name, false);
+  imagemRecortada(ctx, alvo.image || album.capa, ix, iy, size, size, 12 * s, alvo.name || album.name, false);
   ctx.restore();
 
-  const baseY = tall ? H * 0.59 : H * 0.66;
-  const gap = 34 * s;
+  const baseY = tall ? H * 0.57 : H * 0.62;
+  const gap = 38 * s;
   const colW = (W - pad * 2 - gap) / 2;
   const lista = (x, titulo, itens, nome, meta) => {
     ctx.fillStyle = "#F8F2F3";
-    ctx.font = `700 ${(tall ? 31 : 23) * s}px Inter`;
+    ctx.font = `700 ${(tall ? 40 : 29) * s}px Inter`;
     ctx.fillText(titulo, x, baseY);
-    let y = baseY + (tall ? 48 : 38) * s;
+    let y = baseY + (tall ? 58 : 43) * s;
     itens.slice(0, square ? 3 : 5).forEach((it, i) => {
-      ctx.fillStyle = "rgba(255,255,255,.72)";
-      ctx.font = `600 ${(tall ? 19 : 16) * s}px Inter`;
+      ctx.fillStyle = "rgba(255,255,255,.76)";
+      ctx.font = `600 ${(tall ? 22 : 18) * s}px Inter`;
       ctx.fillText(`#${i + 1}`, x, y);
       ctx.fillStyle = "#FFFFFF";
-      writeFit(ctx, nome(it), x + 42 * s, y, colW - 42 * s, (tall ? 27 : 20) * s, 14 * s, "Inter", "700");
-      ctx.fillStyle = "rgba(255,255,255,.64)";
-      ctx.font = `500 ${(tall ? 16 : 13) * s}px Inter`;
-      ctx.fillText(truncate(ctx, meta(it), colW - 42 * s), x + 42 * s, y + (tall ? 23 : 19) * s);
-      y += tall ? 74 * s : 52 * s;
+      writeFit(ctx, nome(it), x + 46 * s, y, colW - 46 * s, (tall ? 34 : 24) * s, 16 * s, "Inter", "700");
+      ctx.fillStyle = "rgba(255,255,255,.68)";
+      writeFit(ctx, meta(it), x + 46 * s, y + (tall ? 30 : 22) * s, colW - 46 * s, (tall ? 20 : 15) * s, 13 * s, "Inter", "500");
+      y += tall ? 92 * s : 61 * s;
     });
   };
-  lista(pad, "Top artistas", data.topArtists || [], (a) => a.name, (a) => `${a.playcount || 0} plays`);
-  lista(pad + colW + gap, "Top músicas", data.topTracks || [], (t) => t.name, (t) => t.artist || "");
+  lista(pad, "Artistas", data.topArtists || [], (a) => a.name, (a) => `${a.playcount || 0} reproduções`);
+  lista(pad + colW + gap, "Faixas", data.topTracks || [], (t) => t.name, (t) => t.artist || "");
 
   if (tall) {
-    const fy = H - 118 * s;
-    ctx.fillStyle = "rgba(255,255,255,.28)";
-    ctx.fillRect(pad, fy - 38 * s, W - pad * 2, 2 * s);
-    ctx.fillStyle = "rgba(255,255,255,.7)";
-    ctx.font = `600 ${18 * s}px Inter`;
-    ctx.fillText("ESCUTA", pad, fy);
+    const albumY = H - 126 * s;
+    ctx.fillStyle = "rgba(255,255,255,.26)";
+    ctx.fillRect(pad, albumY - 38 * s, W - pad * 2, 2 * s);
+    ctx.fillStyle = "rgba(255,255,255,.72)";
+    ctx.font = `600 ${19 * s}px Inter`;
+    ctx.fillText(data.period === "ano" ? "ÁLBUM DO ANO" : data.period === "mes" ? "ÁLBUM DO MÊS" : "ÁLBUM MAIS OUVIDO", pad, albumY);
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = `700 ${28 * s}px Inter`;
-    ctx.fillText(`${st.count} scrobbles · ${st.tempo}`, pad, fy + 38 * s);
+    writeFit(ctx, album.name || "—", pad, albumY + 42 * s, W * 0.58, 32 * s, 20 * s, "Inter", "700");
+    ctx.textAlign = "right";
+    ctx.fillStyle = "rgba(255,255,255,.74)";
+    ctx.font = `600 ${20 * s}px Inter`;
+    ctx.fillText(`${st.count} REPRODUÇÕES · ${st.tempo.toUpperCase()}`, W - pad, albumY + 42 * s);
+    ctx.textAlign = "left";
   }
-
-  ctx.fillStyle = "rgba(255,255,255,.74)";
-  ctx.font = `600 ${18 * s}px Inter`;
-  if (st.handle) ctx.fillText(truncate(ctx, st.handle, W * 0.5), pad, H - 34 * s);
-  ctx.textAlign = "right";
-  ctx.fillText(`${st.count} · ${st.tempo}`, W - pad, H - 34 * s);
-  ctx.textAlign = "left";
 }
 
 const DRAWERS = {
@@ -2441,8 +2630,19 @@ export function render(canvas, layoutId, resId, data) {
   canvas.height = res.h;
   const bruto = canvas.getContext("2d");
   bruto.textBaseline = "alphabetic";
-  const ctx = contextoTematico(bruto, temaDe(data));
-  (DRAWERS[layoutId] || drawMixtape)(ctx, res.w, res.h, data);
+  const pal = temaDe(data);
+  const ctx = contextoTematico(bruto, pal);
+  const footerH = alturaRodape(res.w, res.h);
+  const contentH = res.h - footerH;
+
+  /* O canvas reserva uma área exclusiva: conteúdo e rodapé nunca se sobrepõem. */
+  bruto.save();
+  bruto.beginPath();
+  bruto.rect(0, 0, res.w, contentH);
+  bruto.clip();
+  (DRAWERS[layoutId] || drawMixtape)(ctx, res.w, contentH, data);
+  bruto.restore();
+  drawFaixaFooter(bruto, res.w, res.h, data, pal, layoutId);
   return res;
 }
 
